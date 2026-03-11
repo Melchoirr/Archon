@@ -1,0 +1,19 @@
+- details: ''
+  idea_id: ''
+  phase: literature
+  summary: '我已完成文献调研并生成了两份文档。由于搜索 API 暂时不可用，我基于该领域的现有知识撰写了综述。
+
+
+    ## 完成的工作
+
+
+    ### 1. 生成 `knowledge/survey.md` - 综述文档
+
+    包含以下内容：
+
+    - **问题定义**：生成式时序预测中均值回归问题的定义和表现（分布坍缩、模式collapse、过度平滑）
+
+    - **核心论文**：扩散模型、Flow Matching 相关的重要论文列'
+  tags: []
+  timestamp: '2026-03-05T18:42:14.938111'
+  type: insight

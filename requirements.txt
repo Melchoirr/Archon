@@ -1,0 +1,8 @@
+anthropic>=0.40
+pyyaml
+requests
+ddgs
+torch
+numpy
+pandas
+matplotlib
