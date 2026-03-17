@@ -78,9 +78,12 @@ class KnowledgeBaseManager:
 
     # === 文档管理 ===
 
-    def upload_document(self, kb_id: str, file_path: str, knowledge_type: int = 1) -> str:
+    def upload_document(self, kb_id: str, file_path: str, knowledge_type: int = 1,
+                        skip_if_exists: bool = True, display_name: str = "") -> str:
         """上传文档到知识库。
         knowledge_type: 1=标题段落分段(默认), 5=自定义分段
+        skip_if_exists: 按文件名检查是否已存在，避免重复上传
+        display_name: 上传到知识库的文件名（默认用原文件名）
         返回 document_id
         """
         if not self.enabled:
@@ -94,19 +97,40 @@ class KnowledgeBaseManager:
             logger.warning(f"Unsupported file type: {ext}, skipping {file_path}")
             return ""
 
+        upload_name = display_name or os.path.basename(file_path)
+        # display_name 需要保留原扩展名
+        if display_name and not display_name.endswith(ext):
+            upload_name = display_name + ext
+
+        if skip_if_exists:
+            existing_docs = self.list_documents(kb_id)
+            for doc in existing_docs:
+                doc_name = doc.get("name", "") or doc.get("document_name", "")
+                if upload_name in doc_name:
+                    logger.info(f"Document already exists, skipping: {upload_name}")
+                    return doc.get("id", "")
+
         try:
             with open(file_path, "rb") as f:
                 resp = requests.post(
                     f"{BASE_URL}/document/upload_document/{kb_id}",
                     headers={"Authorization": f"Bearer {self.api_key}"},
-                    files={"file": (os.path.basename(file_path), f)},
+                    files={"files": (upload_name, f)},
                     data={"knowledge_type": str(knowledge_type)},
                 )
             data = resp.json()
-            if resp.status_code == 200 and data.get("data"):
-                doc_id = data["data"].get("id", "")
-                logger.info(f"Uploaded {os.path.basename(file_path)} -> {kb_id}")
-                return str(doc_id)
+            if resp.status_code == 200 and data.get("code") == 200:
+                # API 返回格式: data.successInfos[].documentId
+                success = (data.get("data") or {}).get("successInfos", [])
+                if success:
+                    doc_id = success[0].get("documentId", "")
+                    logger.info(f"Uploaded {os.path.basename(file_path)} -> {kb_id} (doc_id={doc_id})")
+                    return str(doc_id)
+                # 兼容旧格式
+                doc_id = (data.get("data") or {}).get("id", "")
+                if doc_id:
+                    logger.info(f"Uploaded {os.path.basename(file_path)} -> {kb_id}")
+                    return str(doc_id)
             logger.error(f"Upload failed for {file_path}: {data}")
         except Exception as e:
             logger.error(f"Upload error for {file_path}: {e}")
@@ -158,7 +182,7 @@ class KnowledgeBaseManager:
             return []
 
 
-SINGLE_KB_NAME = "sundial_research"
+SINGLE_KB_NAME = "archon_research"
 
 
 def search_knowledge_base(query: str, scope: str = "all", top_k: int = 5) -> str:
@@ -196,21 +220,3 @@ def search_knowledge_base(query: str, scope: str = "all", top_k: int = 5) -> str
         results = filtered
 
     return json.dumps(results, indent=2, ensure_ascii=False)
-
-
-SEARCH_KB_SCHEMA = {
-    "description": "搜索知识库中的历史中间结果。可搜索论文总结、实验结果、代码摘要等所有历史产出。",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string", "description": "搜索内容"},
-            "scope": {
-                "type": "string",
-                "description": "搜索范围: topic ID (如 T001) 或 phase (survey/dataset) 按标题前缀过滤, all=全部",
-                "default": "all",
-            },
-            "top_k": {"type": "integer", "description": "返回结果数", "default": 5},
-        },
-        "required": ["query"],
-    },
-}

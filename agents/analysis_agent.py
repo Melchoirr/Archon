@@ -1,10 +1,16 @@
 """分析决策 Agent：逐步逐版本分析实验结果（增强版：预期对比、VLM、微调建议）"""
 from .base_agent import BaseAgent
 from shared.utils.config_helpers import load_topic_config
-from tools.file_ops import read_file, write_file, list_directory, READ_FILE_SCHEMA, WRITE_FILE_SCHEMA, LIST_DIRECTORY_SCHEMA
-from tools.research_tree import read_tree, update_tree, READ_TREE_SCHEMA, UPDATE_TREE_SCHEMA
-from tools.memory import query_memory, add_experience, QUERY_MEMORY_SCHEMA, ADD_EXPERIENCE_SCHEMA
-from tools.vlm_analysis import analyze_image, analyze_plots_dir, ANALYZE_IMAGE_SCHEMA, ANALYZE_PLOTS_SCHEMA
+from tools.file_ops import read_file, write_file, list_directory
+from tools.research_tree import read_tree, update_idea_phase
+from tools.memory import query_memory, add_experience
+from tools.vlm_analysis import analyze_image, analyze_plots_dir
+from shared.models.tool_params import (
+    ReadFileParams, WriteFileParams, ListDirectoryParams,
+    ReadTreeParams, UpdateIdeaPhaseParams,
+    QueryMemoryParams, AddExperienceParams,
+    AnalyzeImageParams, AnalyzePlotsParams,
+)
 
 SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研分析专家。你的任务是分析实验结果并提供决策建议。
 
@@ -65,29 +71,69 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研分析专家。你的任务是分析
 - 某些设置的异常表现
 - 值得进一步探索的方向
 
-不要简化或妥协方案，除非 idea 本身被证明有根本性错误。遇到实现困难时，寻找解决办法而非回退到更简单的版本。"""
+## 输出质量要求
+
+**用数据说话，不要空洞评价。** 每份分析文档有最低要求：
+- 单版本分析（V{N}/analysis.md）: ≥800字 — 必须包含具体数值对比表格、与预期的逐项差异、原因分析
+- 跨版本综合（step/analysis.md）: ≥1000字 — 必须包含 V1/V2/V3 对比表格、迭代趋势描述、最优版本选择理由
+- 总体分析（analysis.md）: ≥1500字 — 必须包含全局对比表格、决策建议的量化依据、至少 3 条经验记录到 memory
+
+不要写"结果较好"/"有所提升"这类模糊表述，必须给出具体数值和百分比变化。"""
 
 
 class AnalysisAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml"):
+    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None):
         tc = load_topic_config(config_path)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc["topic_title"],
-            metric_names=tc["metric_names"],
+            topic_title=tc.topic.title,
+            metric_names=tc.metric_names,
         )
 
         super().__init__(
             name="分析决策Agent",
             system_prompt=system_prompt,
             tools=[],
-            max_iterations=25,
+            max_iterations=20,
+            allowed_dirs=allowed_dirs,
         )
-        self.register_tool("read_file", read_file, READ_FILE_SCHEMA)
-        self.register_tool("write_file", write_file, WRITE_FILE_SCHEMA)
-        self.register_tool("list_directory", list_directory, LIST_DIRECTORY_SCHEMA)
-        self.register_tool("read_tree", read_tree, READ_TREE_SCHEMA)
-        self.register_tool("update_tree", update_tree, UPDATE_TREE_SCHEMA)
-        self.register_tool("query_memory", query_memory, QUERY_MEMORY_SCHEMA)
-        self.register_tool("add_experience", add_experience, ADD_EXPERIENCE_SCHEMA)
-        self.register_tool("analyze_image", analyze_image, ANALYZE_IMAGE_SCHEMA)
-        self.register_tool("analyze_plots_dir", analyze_plots_dir, ANALYZE_PLOTS_SCHEMA)
+        self.register_tool("read_file", read_file, ReadFileParams)
+        self.register_tool("write_file", write_file, WriteFileParams)
+        self.register_tool("list_directory", list_directory, ListDirectoryParams)
+        self.register_tool("read_tree", read_tree, ReadTreeParams)
+        self.register_tool("update_idea_phase", update_idea_phase, UpdateIdeaPhaseParams)
+        self.register_tool("query_memory", query_memory, QueryMemoryParams)
+        self.register_tool("add_experience", add_experience, AddExperienceParams)
+        self.register_tool("analyze_image", analyze_image, AnalyzeImageParams)
+        self.register_tool("analyze_plots_dir", analyze_plots_dir, AnalyzePlotsParams)
+
+    def build_prompt(self, *, topic_title: str, metric_names: str = "",
+                     files_content: list, results_info: str = "",
+                     step_id: str = None, version: int = None,
+                     idea_dir: str) -> str:
+        prompt = f"""分析以下实验结果，提供决策建议。
+
+## 研究课题
+{topic_title}
+
+## 评估指标
+{metric_names}
+
+{chr(10).join(files_content)}
+
+## 实验结果
+{results_info}
+
+请:
+1. 对比 baseline 的定量结果
+2. 与 experiment_plan.md 中的预期结果对比
+3. 对 results/ 下的图片调用 analyze_image 分析
+"""
+        if step_id and version:
+            prompt += f"""4. 这是 {step_id} 的 V{version} 版本分析
+5. 将单版本分析写入 results/{step_id}_*/V{version}/analysis.md
+6. 如果还有后续迭代，给出下一版本的微调建议"""
+        else:
+            prompt += f"""4. 将总体分析写入 {idea_dir}/analysis.md
+5. 给出明确的决策建议（继续深化/调整方向/放弃/发表）
+6. 将关键经验记录到 memory"""
+        return prompt

@@ -19,16 +19,3 @@ def web_search(query: str, max_results: int = 10) -> str:
         return json.dumps({"error": "No results found", "query": query})
     except Exception as e:
         return json.dumps({"error": str(e), "query": query})
-
-
-WEB_SEARCH_SCHEMA = {
-    "description": "使用 DuckDuckGo 搜索引擎搜索网页内容",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string", "description": "搜索关键词"},
-            "max_results": {"type": "integer", "description": "返回结果数量", "default": 10},
-        },
-        "required": ["query"],
-    },
-}

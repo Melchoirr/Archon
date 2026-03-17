@@ -1,26 +1,29 @@
 """阶段前后文档快照：记录每阶段执行前后的状态"""
 import os
-import yaml
+import re
 import logging
 from datetime import datetime
+
+from shared.paths import PathManager
 
 logger = logging.getLogger(__name__)
 
 
-def log_phase_start(phase: str, topic_dir: str, idea_id: str = "") -> str:
-    """记录阶段开始时的状态快照。
-
-    Args:
-        phase: 阶段名称
-        topic_dir: topic 目录路径
-        idea_id: idea ID（可选）
-    """
+def log_phase_start(phase: str, topic_dir: str, idea_id: str = "",
+                    paths: PathManager = None) -> str:
+    """记录阶段开始时的状态快照。"""
     log_name = f"{phase}_{idea_id}" if idea_id else phase
-    log_dir = os.path.join(topic_dir, "phase_logs", log_name)
+    if paths:
+        log_dir = str(paths.phase_log_dir(phase, idea_id))
+    else:
+        log_dir = os.path.join(topic_dir, "phase_logs", log_name)
     os.makedirs(log_dir, exist_ok=True)
 
-    # 收集当前状态
-    tree_path = os.path.join(topic_dir, "research_tree.yaml")
+    # 收集当前 tree 状态
+    if paths:
+        tree_path = str(paths.tree_yaml)
+    else:
+        tree_path = os.path.join(topic_dir, "research_tree.yaml")
     tree_content = ""
     if os.path.exists(tree_path):
         with open(tree_path, "r", encoding="utf-8") as f:
@@ -29,14 +32,19 @@ def log_phase_start(phase: str, topic_dir: str, idea_id: str = "") -> str:
     # 收集 idea 状态
     idea_status = ""
     if idea_id:
-        ideas_dir = os.path.join(topic_dir, "ideas")
-        if os.path.exists(ideas_dir):
-            for d in os.listdir(ideas_dir):
-                if d.startswith(idea_id):
-                    idea_path = os.path.join(ideas_dir, d)
-                    files = os.listdir(idea_path)
-                    idea_status = f"Idea directory: {d}\nFiles: {', '.join(files)}"
-                    break
+        idea_dir = paths.idea_dir(idea_id) if paths else None
+        if idea_dir and idea_dir.exists():
+            files = [f.name for f in idea_dir.iterdir()]
+            idea_status = f"Idea directory: {idea_dir.name}\nFiles: {', '.join(files)}"
+        elif not paths:
+            ideas_dir = os.path.join(topic_dir, "ideas")
+            if os.path.exists(ideas_dir):
+                for d in os.listdir(ideas_dir):
+                    if idea_id in d:
+                        idea_path = os.path.join(ideas_dir, d)
+                        files = os.listdir(idea_path)
+                        idea_status = f"Idea directory: {d}\nFiles: {', '.join(files)}"
+                        break
 
     content = f"""# Phase Start: {phase}
 Time: {datetime.now().isoformat()}
@@ -60,22 +68,16 @@ Idea: {idea_id or 'N/A'}
 
 
 def log_phase_end(phase: str, topic_dir: str, idea_id: str = "",
-                  summary: str = "", kb_mgr=None) -> str:
-    """记录阶段结束时的状态和摘要。
-
-    Args:
-        phase: 阶段名称
-        topic_dir: topic 目录路径
-        idea_id: idea ID（可选）
-        summary: 阶段执行摘要
-        kb_mgr: KnowledgeBaseManager 实例（可选，用于上传文档到知识库）
-    """
+                  summary: str = "", kb_mgr=None, paths: PathManager = None) -> str:
+    """记录阶段结束时的状态和摘要。"""
     log_name = f"{phase}_{idea_id}" if idea_id else phase
-    log_dir = os.path.join(topic_dir, "phase_logs", log_name)
+    if paths:
+        log_dir = str(paths.phase_log_dir(phase, idea_id))
+    else:
+        log_dir = os.path.join(topic_dir, "phase_logs", log_name)
     os.makedirs(log_dir, exist_ok=True)
 
-    # 收集新生成的文件
-    new_artifacts = _collect_new_artifacts(phase, topic_dir, idea_id)
+    new_artifacts = _collect_new_artifacts(phase, topic_dir, idea_id, paths)
 
     content = f"""# Phase End: {phase}
 Time: {datetime.now().isoformat()}
@@ -92,101 +94,165 @@ Idea: {idea_id or 'N/A'}
     with open(after_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-    # 自动上传到知识库
     if kb_mgr and kb_mgr.enabled and new_artifacts:
-        _upload_artifacts(kb_mgr, new_artifacts, topic_dir, idea_id)
+        _upload_artifacts(kb_mgr, new_artifacts, topic_dir, idea_id, phase)
 
     logger.info(f"Phase end logged: {log_name}")
     return f"Logged phase end: {after_path}"
 
 
-def _collect_new_artifacts(phase: str, topic_dir: str, idea_id: str) -> list:
+def _collect_new_artifacts(phase: str, topic_dir: str, idea_id: str,
+                           paths: PathManager = None) -> list:
     """收集该阶段可能产生的新文件"""
     artifacts = []
 
-    # 按阶段确定可能的产出路径
-    phase_outputs = {
-        "elaborate": [os.path.join(topic_dir, "context.md")],
-        "survey": [
-            os.path.join(topic_dir, "survey", "survey.md"),
-            os.path.join(topic_dir, "survey", "index.md"),
-            os.path.join(topic_dir, "survey", "leaderboard.md"),
-            os.path.join(topic_dir, "baselines.md"),
-            os.path.join(topic_dir, "datasets.md"),
-            os.path.join(topic_dir, "metrics.md"),
-        ],
-    }
+    if paths:
+        phase_outputs = {
+            "elaborate": [str(paths.context_md)],
+            "survey": [
+                str(paths.survey_md),
+                str(paths.survey_dir / "index.md"),
+                str(paths.leaderboard_md),
+                str(paths.baselines_md),
+                str(paths.datasets_md),
+                str(paths.metrics_md),
+            ],
+        }
 
-    # Idea-specific outputs
-    if idea_id:
-        ideas_dir = os.path.join(topic_dir, "ideas")
-        idea_dir = ""
-        if os.path.exists(ideas_dir):
-            for d in os.listdir(ideas_dir):
-                if d.startswith(idea_id):
-                    idea_dir = os.path.join(ideas_dir, d)
-                    break
+        if idea_id:
+            idea_dir = paths.idea_dir(idea_id)
+            if idea_dir:
+                idea_outputs = {
+                    "ideation": [str(idea_dir / "proposal.md")],
+                    "refine": [
+                        str(idea_dir / "refinement" / "theory.md"),
+                        str(idea_dir / "refinement" / "model_modular.md"),
+                        str(idea_dir / "refinement" / "model_complete.md"),
+                        str(idea_dir / "experiment_plan.md"),
+                    ],
+                    "code_reference": [str(idea_dir / "code_reference.md")],
+                    "code": [str(idea_dir / "src" / "structure.md")],
+                    "experiment": [str(idea_dir / "experiment_results.md")],
+                    "analyze": [str(idea_dir / "analysis.md")],
+                    "conclude": [str(idea_dir / "conclusion.md")],
+                }
+                phase_outputs.update(idea_outputs)
 
-        if idea_dir:
-            idea_outputs = {
-                "ideation": [os.path.join(idea_dir, "proposal.md")],
-                "refine": [
-                    os.path.join(idea_dir, "refinement", "theory.md"),
-                    os.path.join(idea_dir, "refinement", "model_modular.md"),
-                    os.path.join(idea_dir, "refinement", "model_complete.md"),
-                    os.path.join(idea_dir, "experiment_plan.md"),
-                ],
-                "code": [os.path.join(idea_dir, "src", "structure.md")],
-                "analyze": [os.path.join(idea_dir, "analysis.md")],
-                "conclude": [os.path.join(idea_dir, "conclusion.md")],
-            }
-            phase_outputs.update(idea_outputs)
+        # survey 阶段额外收集
+        if phase == "survey":
+            sd = paths.summaries_dir
+            if sd.exists():
+                for f in sd.iterdir():
+                    if f.suffix == ".md":
+                        artifacts.append(str(f))
+            dc = paths.dataset_cards_dir
+            if dc.exists():
+                for f in dc.iterdir():
+                    if f.suffix == ".md":
+                        artifacts.append(str(f))
+    else:
+        phase_outputs = {
+            "elaborate": [os.path.join(topic_dir, "context.md")],
+            "survey": [
+                os.path.join(topic_dir, "survey", "survey.md"),
+                os.path.join(topic_dir, "survey", "index.md"),
+                os.path.join(topic_dir, "survey", "leaderboard.md"),
+                os.path.join(topic_dir, "baselines.md"),
+                os.path.join(topic_dir, "datasets.md"),
+                os.path.join(topic_dir, "metrics.md"),
+            ],
+        }
 
-    # 检查哪些文件存在
+        if idea_id:
+            ideas_dir = os.path.join(topic_dir, "ideas")
+            idea_dir = ""
+            if os.path.exists(ideas_dir):
+                for d in os.listdir(ideas_dir):
+                    if idea_id in d:
+                        idea_dir = os.path.join(ideas_dir, d)
+                        break
+            if idea_dir:
+                idea_outputs = {
+                    "ideation": [os.path.join(idea_dir, "proposal.md")],
+                    "refine": [
+                        os.path.join(idea_dir, "refinement", "theory.md"),
+                        os.path.join(idea_dir, "refinement", "model_modular.md"),
+                        os.path.join(idea_dir, "refinement", "model_complete.md"),
+                        os.path.join(idea_dir, "experiment_plan.md"),
+                    ],
+                    "code_reference": [os.path.join(idea_dir, "code_reference.md")],
+                    "code": [os.path.join(idea_dir, "src", "structure.md")],
+                    "experiment": [os.path.join(idea_dir, "experiment_results.md")],
+                    "analyze": [os.path.join(idea_dir, "analysis.md")],
+                    "conclude": [os.path.join(idea_dir, "conclusion.md")],
+                }
+                phase_outputs.update(idea_outputs)
+
+        if phase == "survey":
+            summaries_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "knowledge", "papers", "summaries"
+            )
+            if os.path.exists(summaries_dir):
+                for f in os.listdir(summaries_dir):
+                    if f.endswith(".md"):
+                        artifacts.append(os.path.join(summaries_dir, f))
+            dc_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "knowledge", "dataset_cards"
+            )
+            if os.path.exists(dc_dir):
+                for f in os.listdir(dc_dir):
+                    if f.endswith(".md"):
+                        artifacts.append(os.path.join(dc_dir, f))
+
     for path in phase_outputs.get(phase, []):
         if os.path.exists(path):
             artifacts.append(path)
 
-    # 收集全局 summaries（survey 阶段）
-    if phase == "survey":
-        summaries_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "knowledge", "papers", "summaries"
-        )
-        if os.path.exists(summaries_dir):
-            for f in os.listdir(summaries_dir):
-                if f.endswith(".md"):
-                    artifacts.append(os.path.join(summaries_dir, f))
-
-        # 也收集 survey/papers/（兼容旧结构）
-        papers_dir = os.path.join(topic_dir, "survey", "papers")
-        if os.path.exists(papers_dir):
-            for f in os.listdir(papers_dir):
-                if f.endswith(".md"):
-                    artifacts.append(os.path.join(papers_dir, f))
-
-    # 收集 dataset cards
-    if phase == "survey":
-        dc_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "knowledge", "dataset_cards"
-        )
-        if os.path.exists(dc_dir):
-            for f in os.listdir(dc_dir):
-                if f.endswith(".md"):
-                    artifacts.append(os.path.join(dc_dir, f))
-
     return artifacts
 
 
-def _upload_artifacts(kb_mgr, artifacts: list, topic_dir: str, idea_id: str):
-    """上传产出文件到单一全局知识库，标题携带元信息"""
-    import re
-    from tools.knowledge_base import SINGLE_KB_NAME
+_uploaded_artifact_set = set()
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    topic_name = os.path.basename(topic_dir)
-    topic_id_match = re.match(r"(T\d+)", topic_name)
-    topic_id = topic_id_match.group(1) if topic_id_match else topic_name
+
+def derive_display_name(file_path: str) -> str:
+    """从本地路径推导知识库上传文件名"""
+    abs_path = os.path.abspath(file_path)
+    rel = os.path.relpath(abs_path, _PROJECT_ROOT)
+    parts = rel.replace(os.sep, "/").split("/")
+
+    if parts[0] == "topics" and len(parts) >= 3:
+        topic_dir_name = parts[1]
+        topic_id_match = re.match(r"(T\d+)", topic_dir_name)
+        topic_id = topic_id_match.group(1) if topic_id_match else topic_dir_name
+        rest = parts[2:]
+
+        if rest[0] == "ideas" and len(rest) >= 3:
+            idea_dir_name = rest[1]
+            idea_id_match = re.match(r"(I\d+)", idea_dir_name)
+            idea_id = idea_id_match.group(1) if idea_id_match else idea_dir_name
+            inner = rest[2:]
+            name_no_ext = os.path.splitext("_".join(inner))[0]
+            return f"{topic_id}_{idea_id}_{name_no_ext}"
+        else:
+            name_no_ext = os.path.splitext("_".join(rest))[0]
+            return f"{topic_id}_{name_no_ext}"
+
+    elif parts[0] == "knowledge" and len(parts) >= 3:
+        rest = parts[1:]
+        name_no_ext = os.path.splitext("_".join(rest))[0]
+        return name_no_ext
+
+    else:
+        name_no_ext = os.path.splitext("_".join(parts))[0]
+        return name_no_ext
+
+
+def _upload_artifacts(kb_mgr, artifacts: list, topic_dir: str, idea_id: str, phase: str = ""):
+    """上传产出文件到单一全局知识库"""
+    from tools.knowledge_base import SINGLE_KB_NAME
 
     kb_id = kb_mgr.get_or_create_kb(SINGLE_KB_NAME, "全局研究知识库")
     if not kb_id:
@@ -194,51 +260,13 @@ def _upload_artifacts(kb_mgr, artifacts: list, topic_dir: str, idea_id: str):
         return
 
     for file_path in artifacts:
+        if file_path in _uploaded_artifact_set:
+            continue
         try:
-            basename = os.path.basename(file_path)
-            # 构建带元信息的标题
-            if "knowledge/papers/summaries" in file_path:
-                title = f"[{topic_id}] [survey] {basename}"
-            elif "knowledge/dataset_cards" in file_path:
-                title = f"[dataset] {basename}"
-            elif "knowledge/papers" in file_path or "knowledge/repos" in file_path:
-                title = f"[global] {basename}"
-            elif idea_id:
-                title = f"[{topic_id}-{idea_id}] {basename}"
-            else:
-                title = f"[{topic_id}] [survey] {basename}"
-
-            # 上传时用重命名的方式：创建临时符号链接或直接上传
-            # 智谱 API 用 file basename 作为文档名，我们直接上传原文件
-            kb_mgr.upload_document(kb_id, file_path)
-            logger.info(f"Uploaded to {SINGLE_KB_NAME}: {title}")
+            display_name = derive_display_name(file_path)
+            doc_id = kb_mgr.upload_document(kb_id, file_path, display_name=display_name)
+            _uploaded_artifact_set.add(file_path)
+            if doc_id:
+                logger.info(f"Uploaded to {SINGLE_KB_NAME}: {display_name}")
         except Exception as e:
             logger.warning(f"Failed to upload {file_path}: {e}")
-
-
-LOG_PHASE_START_SCHEMA = {
-    "description": "记录阶段开始时的状态快照",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "phase": {"type": "string", "description": "阶段名称"},
-            "topic_dir": {"type": "string", "description": "topic 目录路径"},
-            "idea_id": {"type": "string", "description": "idea ID", "default": ""},
-        },
-        "required": ["phase", "topic_dir"],
-    },
-}
-
-LOG_PHASE_END_SCHEMA = {
-    "description": "记录阶段结束时的状态和摘要",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "phase": {"type": "string", "description": "阶段名称"},
-            "topic_dir": {"type": "string", "description": "topic 目录路径"},
-            "idea_id": {"type": "string", "description": "idea ID", "default": ""},
-            "summary": {"type": "string", "description": "阶段执行摘要", "default": ""},
-        },
-        "required": ["phase", "topic_dir"],
-    },
-}

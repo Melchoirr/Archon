@@ -7,6 +7,17 @@ __pycache__/
 dist/
 build/
 .claude/
-knowledge/papers/pdfs/
+.venv/
+
+# Agent 运行时产出
+topics/
+knowledge/papers/
 knowledge/repos/
+knowledge/topics/
 shared/data/
+shared/topics/
+memory/
+
+# 临时调试脚本
+debug_*.py
+test_*.py

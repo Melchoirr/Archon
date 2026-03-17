@@ -1,12 +1,17 @@
 """Idea 细化 Agent：理论推导 + 模块化结构设计 + 阶段性实验设计"""
 from .base_agent import BaseAgent
 from shared.utils.config_helpers import load_topic_config
-from tools.file_ops import read_file, write_file, READ_FILE_SCHEMA, WRITE_FILE_SCHEMA
-from tools.research_tree import read_tree, update_tree, READ_TREE_SCHEMA, UPDATE_TREE_SCHEMA
-from tools.memory import query_memory, QUERY_MEMORY_SCHEMA
-from tools.web_search import web_search, WEB_SEARCH_SCHEMA
-from tools.semantic_scholar import search_papers, SEARCH_PAPERS_SCHEMA
-from tools.paper_manager import read_paper_section, READ_PAPER_SECTION_SCHEMA
+from tools.file_ops import read_file, write_file
+from tools.research_tree import read_tree, update_idea_phase
+from tools.memory import query_memory
+from tools.web_search import web_search
+from tools.openalex import search_papers
+from tools.paper_manager import read_paper_section
+from shared.models.tool_params import (
+    ReadFileParams, WriteFileParams, ReadTreeParams, UpdateIdeaPhaseParams,
+    QueryMemoryParams, WebSearchParams, SearchPapersParams,
+    ReadPaperSectionParams,
+)
 
 SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案细化专家。你的任务是将一个研究 idea 展开为完整的技术方案。
 
@@ -57,39 +62,83 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案细化专家。你的任务是
 - 不确定的设计决策要标注，并设计对应的消融实验
 - 每个预期结果要有依据（来自论文或理论推导）
 
-不要简化或妥协方案，除非 idea 本身被证明有根本性错误。遇到实现困难时，寻找解决办法而非回退到更简单的版本。"""
+## 输出质量要求
+
+**不要简化方案，不要用一两句话带过关键设计。** 每份文档有最低字数要求：
+- theory.md: ≥2000字 — 公式推导必须完整，每个公式需解释变量含义和设计动机
+- model_modular.md: ≥1500字 — 每个模块需写明输入维度、输出维度、内部计算步骤
+- model_complete.md: ≥3000字 — 端到端描述，含完整数据流图（文字描述）和复杂度分析
+- experiment_plan.md: ≥1000字 — 每个 Step 需写明预期数值范围及依据来源
+
+遇到实现困难时，寻找解决办法而非回退到更简单的版本。"""
 
 
 class RefinementAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml"):
+    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None):
         tc = load_topic_config(config_path)
         # 构建可选的数据集和指标信息
         extra_context = ""
-        if tc["dataset_names"]:
-            extra_context += f"\n数据集: {tc['dataset_names']}"
-        if tc["metric_names"]:
-            extra_context += f"\n评估指标: {tc['metric_names']}"
+        if tc.dataset_names:
+            extra_context += f"\n数据集: {tc.dataset_names}"
+        if tc.metric_names:
+            extra_context += f"\n评估指标: {tc.metric_names}"
 
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc["topic_title"],
+            topic_title=tc.topic.title,
         )
         if extra_context:
             system_prompt = system_prompt.replace(
-                "研究课题: {topic_title}".format(topic_title=tc["topic_title"]),
-                f"研究课题: {tc['topic_title']}{extra_context}",
+                "研究课题: {topic_title}".format(topic_title=tc.topic.title),
+                f"研究课题: {tc.topic.title}{extra_context}",
             )
 
         super().__init__(
             name="方案细化Agent",
             system_prompt=system_prompt,
             tools=[],
-            max_iterations=25,
+            max_iterations=20,
+            allowed_dirs=allowed_dirs,
         )
-        self.register_tool("read_file", read_file, READ_FILE_SCHEMA)
-        self.register_tool("write_file", write_file, WRITE_FILE_SCHEMA)
-        self.register_tool("read_tree", read_tree, READ_TREE_SCHEMA)
-        self.register_tool("update_tree", update_tree, UPDATE_TREE_SCHEMA)
-        self.register_tool("query_memory", query_memory, QUERY_MEMORY_SCHEMA)
-        self.register_tool("web_search", web_search, WEB_SEARCH_SCHEMA)
-        self.register_tool("search_papers", search_papers, SEARCH_PAPERS_SCHEMA)
-        self.register_tool("read_paper_section", read_paper_section, READ_PAPER_SECTION_SCHEMA)
+        self.register_tool("read_file", read_file, ReadFileParams)
+        self.register_tool("write_file", write_file, WriteFileParams)
+        self.register_tool("read_tree", read_tree, ReadTreeParams)
+        self.register_tool("update_idea_phase", update_idea_phase, UpdateIdeaPhaseParams)
+        self.register_tool("query_memory", query_memory, QueryMemoryParams)
+        self.register_tool("web_search", web_search, WebSearchParams)
+        self.register_tool("search_papers", search_papers, SearchPapersParams)
+        self.register_tool("read_paper_section", read_paper_section, ReadPaperSectionParams)
+
+    def build_prompt(self, *, topic_title: str, dataset_names: str = "",
+                     metric_names: str = "", topic_dir: str = "",
+                     idea_dir: str, proposal: str, context: str = "",
+                     past_exp: str = "", refinement_dir: str) -> str:
+        return f"""请将以下 idea 展开为完整技术方案。
+
+## 研究课题
+{topic_title}
+
+## 可用数据集
+{dataset_names}
+
+## 评估指标
+{metric_names}
+
+## 路径信息
+- topic_dir: {topic_dir}
+- idea_dir: {idea_dir}
+
+## Proposal
+{proposal}
+
+{context}
+
+## 历史经验
+{past_exp}
+
+请输出:
+1. {refinement_dir}/theory.md - 理论推导
+2. {refinement_dir}/model_modular.md - 模块化结构设计
+3. {refinement_dir}/model_complete.md - 完整结构设计
+4. {idea_dir}/experiment_plan.md - 阶段性实验计划（含预期结果）
+
+注意: 使用 update_idea_phase 更新阶段状态时传入 idea_id、phase 名和 status。"""

@@ -1,14 +1,19 @@
 """Idea 生成 Agent：基于文献 gap 发散生成研究 idea（增强版：ReAct 循环、去重、关系图）"""
 from .base_agent import BaseAgent
 from shared.utils.config_helpers import load_topic_config
-from tools.file_ops import read_file, write_file, list_directory, READ_FILE_SCHEMA, WRITE_FILE_SCHEMA, LIST_DIRECTORY_SCHEMA
-from tools.research_tree import add_idea_to_tree, read_tree, ADD_IDEA_SCHEMA, READ_TREE_SCHEMA
-from tools.memory import query_memory, QUERY_MEMORY_SCHEMA
-from tools.web_search import web_search, WEB_SEARCH_SCHEMA
-from tools.semantic_scholar import search_papers, SEARCH_PAPERS_SCHEMA
+from tools.file_ops import read_file, write_file, list_directory
+from tools.research_tree import add_idea_to_tree, read_tree
+from tools.memory import query_memory
+from tools.web_search import web_search
+from tools.openalex import search_papers
 from tools.idea_graph import (
     add_idea_relationship, get_idea_graph,
-    ADD_RELATIONSHIP_SCHEMA, GET_GRAPH_SCHEMA,
+)
+from shared.models.tool_params import (
+    ReadFileParams, WriteFileParams, ListDirectoryParams,
+    AddIdeaParams, ReadTreeParams, QueryMemoryParams,
+    WebSearchParams, SearchPapersParams,
+    AddRelationshipParams, GetGraphParams,
 )
 
 SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研创意专家。你的任务是基于文献综述中的 research gap，
@@ -18,7 +23,11 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研创意专家。你的任务是基于
 
 对每个 idea，执行以下循环:
 1. **Think**: 基于 survey 和 baselines 思考一个方向
-2. **Search**: 用 search_papers 或 web_search 验证该方向是否已有人做过
+2. **Search（至少 3 次查询）**:
+   a. 核心方法英文关键词: search_papers(query="...", year_range="2022-")
+   b. 方法 + 应用场景组合: search_papers(query="...", limit=5)
+   c. web_search 搜最新预印本: web_search("方法名 arxiv 2024 2025")
+   d. 如果找到高度相似工作，必须在 proposal 中说明差异或放弃该方向
 3. **Refine**: 根据搜索结果，调整 idea 的创新点
 4. **Generate**: 确认无重复后，写出完整的 proposal
 
@@ -44,19 +53,19 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研创意专家。你的任务是基于
 - 从理论/方法/实验/应用等不同层面思考
 - 每个 idea 只包含一个核心创新点
 
-## 每个 idea 需要包含
+## 每个 idea 需要包含（proposal.md ≥800字）
 
 - 标题（简洁有力）
-- 动机（为什么这个方向可能有效）
-- 核心方法描述（2-3 段）
-- 预期效果
-- 可能的风险/局限
-- 相关文献支撑
-- 实现难度估计（1-5）
+- 动机: ≥150字，为什么这个方向可能有效，引用 survey 中的具体 gap
+- 核心方法描述: ≥300字，分 2-3 段详细说明技术路线，不要只写一句话概括
+- 预期效果: 具体说明在哪些指标上预期提升多少，依据是什么
+- 可能的风险/局限: ≥100字，至少列 2 个风险及缓解思路
+- 相关文献支撑: 至少引用 3 篇相关论文，说明借鉴/改进关系
+- 实现难度估计（1-5）及理由
 
 ## 输出
 
-将每个 idea 写入 ideas/{idea_id}_{shortname}/proposal.md
+将每个 idea 写入 ideas/{{idea_id}}_{{shortname}}/proposal.md
 用 add_idea_to_tree 注册到研究树
 用 add_idea_relationship 记录 idea 间的关系
 最后用 get_idea_graph 生成并保存关系图
@@ -67,25 +76,62 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研创意专家。你的任务是基于
 
 
 class IdeationAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml"):
+    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None):
         tc = load_topic_config(config_path)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc["topic_title"],
+            topic_title=tc.topic.title,
         )
 
         super().__init__(
             name="Idea生成Agent",
             system_prompt=system_prompt,
             tools=[],
-            max_iterations=25,
+            max_iterations=20,
+            allowed_dirs=allowed_dirs,
         )
-        self.register_tool("read_file", read_file, READ_FILE_SCHEMA)
-        self.register_tool("write_file", write_file, WRITE_FILE_SCHEMA)
-        self.register_tool("list_directory", list_directory, LIST_DIRECTORY_SCHEMA)
-        self.register_tool("add_idea_to_tree", add_idea_to_tree, ADD_IDEA_SCHEMA)
-        self.register_tool("read_tree", read_tree, READ_TREE_SCHEMA)
-        self.register_tool("query_memory", query_memory, QUERY_MEMORY_SCHEMA)
-        self.register_tool("web_search", web_search, WEB_SEARCH_SCHEMA)
-        self.register_tool("search_papers", search_papers, SEARCH_PAPERS_SCHEMA)
-        self.register_tool("add_idea_relationship", add_idea_relationship, ADD_RELATIONSHIP_SCHEMA)
-        self.register_tool("get_idea_graph", get_idea_graph, GET_GRAPH_SCHEMA)
+        self.register_tool("read_file", read_file, ReadFileParams)
+        self.register_tool("write_file", write_file, WriteFileParams)
+        self.register_tool("list_directory", list_directory, ListDirectoryParams)
+        self.register_tool("add_idea_to_tree", add_idea_to_tree, AddIdeaParams)
+        self.register_tool("read_tree", read_tree, ReadTreeParams)
+        self.register_tool("query_memory", query_memory, QueryMemoryParams)
+        self.register_tool("web_search", web_search, WebSearchParams)
+        self.register_tool("search_papers", search_papers, SearchPapersParams)
+        self.register_tool("add_idea_relationship", add_idea_relationship, AddRelationshipParams)
+        self.register_tool("get_idea_graph", get_idea_graph, GetGraphParams)
+
+    def build_prompt(self, *, topic_title: str, survey: str = "",
+                     baselines: str = "", datasets_md: str = "",
+                     metrics_md: str = "", failed: str = "",
+                     context: str = "", ideas_dir: str) -> str:
+        return f"""基于以下综述生成研究 idea:
+
+## 研究课题
+{topic_title}
+
+## 综述
+{survey[:40000]}
+
+## Baselines
+{baselines[:20000]}
+
+## 可用数据集
+{datasets_md[:10000]}
+
+## 评估指标
+{metrics_md[:10000]}
+
+## 已失败的方向（避免重复）
+{failed}
+
+{context}
+
+根据 survey 和 context.md 的内容，从多个研究角度生成 idea:
+- 分析 survey 中各方法的不足，针对性提出改进
+- 从理论/方法/实验/应用等不同层面思考
+- 每个 idea 只包含一个核心创新点
+
+每个 idea 创建对应的 {ideas_dir}/{{idea_id}}_{{shortname}}/proposal.md，
+并用 add_idea_to_tree 注册到研究树。
+生成完毕后用 add_idea_relationship 记录 idea 间的关系，
+最后用 get_idea_graph 生成关系图。"""

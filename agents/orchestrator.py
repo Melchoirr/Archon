@@ -2,11 +2,15 @@
 import os
 import re
 import yaml
+import json
 import logging
 
-from .literature_agent import LiteratureAgent
-from .survey_helpers import make_search_agent, make_repo_agent, make_synthesis_agent, summarize_single_paper
-from .data_agent import DataAgent
+from .survey_helpers import make_code_ref_agent, build_code_ref_prompt
+from .survey_helpers import (
+    make_search_agent, make_repo_agent, make_synthesis_agent, summarize_single_paper,
+    build_search_prompt, build_repo_prompt, build_synthesis_prompt,
+    make_eda_guide_agent, build_eda_guide_prompt,
+)
 from .ideation_agent import IdeationAgent
 from .design_agent import DesignAgent
 from .experiment_agent import ExperimentAgent
@@ -14,18 +18,19 @@ from .analysis_agent import AnalysisAgent
 from .elaborate_agent import ElaborateAgent
 from .refinement_agent import RefinementAgent
 from .conclusion_agent import ConclusionAgent
+from .theory_check_agent import TheoryCheckAgent
+from .debug_agent import DebugAgent
 from shared.utils.config_helpers import load_topic_config
-from tools.research_tree import (
-    read_tree, update_tree, add_idea_to_tree,
-    next_topic_id, next_idea_id, next_step_id,
-    add_experiment_step, update_iteration,
-    _load_tree, _save_tree,
-)
+from shared.models.config import TopicConfig
+from shared.paths import PathManager
+from tools.research_tree import ResearchTreeService
 from tools.memory import query_memory, add_experience
 from tools.file_ops import read_file, write_file
 from tools.config_updater import update_config_section
 from tools.context_manager import ContextManager
-from tools.knowledge_base import KnowledgeBaseManager, search_knowledge_base, SEARCH_KB_SCHEMA
+from tools.knowledge_base import KnowledgeBaseManager, search_knowledge_base
+from shared.models.tool_params import SearchKBParams
+from shared.models.enums import PhaseState
 from tools.phase_logger import log_phase_start, log_phase_end
 
 logger = logging.getLogger(__name__)
@@ -41,19 +46,28 @@ class ResearchOrchestrator:
             config_path: config.yaml 路径。如果为 None，从 topic_dir 推断。
         """
         self.project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.topic_dir = topic_dir
         self.default_max_iter = 3
 
-        # 推断 topic_dir 和 config_path
+        # 初始化 PathManager（先用临时 topic_dir 以便 find_latest_topic）
+        _tmp_paths = PathManager(self.project_root, topic_dir)
         if topic_dir:
-            self.config_path = config_path or os.path.join(topic_dir, "config.yaml")
+            self.topic_dir = topic_dir
+        else:
+            found = _tmp_paths.find_latest_topic()
+            self.topic_dir = str(found) if found else None
+
+        # 正式构建 PathManager 和 ResearchTreeService
+        self.paths = PathManager(self.project_root, self.topic_dir)
+        self.tree_service = ResearchTreeService(self.paths)
+
+        # 推断 config_path
+        if self.topic_dir:
+            self.config_path = config_path or str(self.paths.config_yaml)
             if not os.path.exists(self.config_path):
                 # 回退到项目根目录的 config
                 self.config_path = os.path.join(self.project_root, "config.yaml")
         else:
             self.config_path = config_path or os.path.join(self.project_root, "config.yaml")
-            # 尝试找最新的 topic 目录
-            self.topic_dir = self._find_latest_topic()
 
         self._reload_config()
 
@@ -65,7 +79,7 @@ class ResearchOrchestrator:
 
         # 初始化上下文管理器
         if self.topic_dir:
-            self.ctx = ContextManager(self.topic_dir, self.project_root, self.kb_mgr)
+            self.ctx = ContextManager(self.paths, self.kb_mgr)
         else:
             self.ctx = None
 
@@ -76,19 +90,6 @@ class ResearchOrchestrator:
         from tools.knowledge_base import SINGLE_KB_NAME
         self.kb_mgr.get_or_create_kb(SINGLE_KB_NAME, "全局研究知识库")
 
-    def _find_latest_topic(self) -> str:
-        """查找最新创建的 topic 目录"""
-        topics_dir = os.path.join(self.project_root, "topics")
-        if not os.path.exists(topics_dir):
-            return None
-        topic_dirs = sorted([
-            d for d in os.listdir(topics_dir)
-            if d.startswith("T") and os.path.isdir(os.path.join(topics_dir, d))
-        ])
-        if topic_dirs:
-            return os.path.join(topics_dir, topic_dirs[-1])
-        return None
-
     def _reload_config(self):
         """重新加载配置"""
         if os.path.exists(self.config_path):
@@ -97,48 +98,12 @@ class ResearchOrchestrator:
             self.topic_config = load_topic_config(self.config_path)
         else:
             self.config = {}
-            self.topic_config = {
-                "topic_title": "(未设置)", "topic_domain": "",
-                "search_keywords": [], "dataset_names": "",
-                "metric_names": "", "quick_test_desc": "",
-                "datasets": {}, "metrics": {}, "experiment": {}, "config": {},
-            }
-
-    def _idea_dir(self, idea_id: str) -> str:
-        """获取 idea 目录路径"""
-        if self.topic_dir:
-            ideas_dir = os.path.join(self.topic_dir, "ideas")
-        else:
-            ideas_dir = os.path.join(self.project_root, "ideas")
-        if os.path.exists(ideas_dir):
-            for d in os.listdir(ideas_dir):
-                if d.startswith(idea_id):
-                    return os.path.join(ideas_dir, d)
-        return None
-
-    def _step_dir(self, idea_id: str, step_id: str) -> str:
-        """获取实验步骤目录"""
-        idea_dir = self._idea_dir(idea_id)
-        if not idea_dir:
-            return None
-        results_dir = os.path.join(idea_dir, "results")
-        if os.path.exists(results_dir):
-            for d in os.listdir(results_dir):
-                if d.startswith(step_id):
-                    return os.path.join(results_dir, d)
-        return None
-
-    def _version_dir(self, idea_id: str, step_id: str, version: int) -> str:
-        """获取实验版本目录"""
-        step_d = self._step_dir(idea_id, step_id)
-        if step_d:
-            return os.path.join(step_d, f"V{version}")
-        return None
+            self.topic_config = TopicConfig()
 
     def _log_phase_start(self, phase: str, idea_id: str = ""):
         """阶段开始日志"""
         if self.topic_dir:
-            log_phase_start(phase, self.topic_dir, idea_id)
+            log_phase_start(phase, self.topic_dir, idea_id, paths=self.paths)
         logger.info(f"\n\n{'='*60}")
         logger.info(f"  Phase: {phase}" + (f" | Idea: {idea_id}" if idea_id else ""))
         logger.info(f"{'='*60}\n")
@@ -146,7 +111,7 @@ class ResearchOrchestrator:
     def _log_phase_end(self, phase: str, idea_id: str = "", summary: str = ""):
         """阶段结束日志"""
         if self.topic_dir:
-            log_phase_end(phase, self.topic_dir, idea_id, summary, self.kb_mgr)
+            log_phase_end(phase, self.topic_dir, idea_id, summary, self.kb_mgr, paths=self.paths)
 
     # === 阶段方法 ===
 
@@ -157,7 +122,7 @@ class ResearchOrchestrator:
 
         # 确定输出路径
         if self.topic_dir:
-            output_path = os.path.join(self.topic_dir, "context.md")
+            output_path = str(self.paths.context_md)
         else:
             output_path = os.path.join(self.project_root, "knowledge", "context.md")
 
@@ -166,26 +131,21 @@ class ResearchOrchestrator:
         if self.ctx:
             context = self.ctx.build_context("elaborate", ref_topics=ref_topics)
 
-        agent = ElaborateAgent(self.config_path, output_path)
-
-        prompt = f"开始展开调研背景。\n\n课题: {self.topic_config['topic_title']}\n\n"
+        agent = ElaborateAgent(self.config_path, output_path,
+                               allowed_dirs=[str(self.paths.topic_dir)])
 
         # 读取 topic_spec.md 作为输入线索（不是约束）
-        spec_path = os.path.join(self.topic_dir, "topic_spec.md") if self.topic_dir else None
+        spec_content = ""
+        spec_path = str(self.paths.topic_spec) if self.topic_dir else None
         if spec_path and os.path.exists(spec_path):
             spec_content = read_file(spec_path)
-            prompt += f"""以下是用户对课题的初步描述，仅作为线索参考，不要被其限制：
 
----
-{spec_content}
----
-
-注意：以上只是出发点，你需要更广泛地探索问题空间，不要局限于上述描述的方向。
-
-"""
-        if context:
-            prompt += f"\n{context}\n"
-        prompt += f"\n请将结果写入 {output_path}"
+        prompt = agent.build_prompt(
+            topic_title=self.topic_config.topic.title,
+            spec_content=spec_content,
+            context=context,
+            output_path=output_path,
+        )
 
         result = agent.run(prompt)
 
@@ -209,14 +169,14 @@ class ResearchOrchestrator:
         topic_id = self._get_topic_id()
 
         # 确定输出目录
-        summaries_dir = os.path.join(self.project_root, "knowledge", "papers", "summaries")
+        summaries_dir = str(self.paths.summaries_dir)
         os.makedirs(summaries_dir, exist_ok=True)
 
         if self.topic_dir:
-            survey_dir = os.path.join(self.topic_dir, "survey")
-            baselines_path = os.path.join(self.topic_dir, "baselines.md")
-            datasets_path = os.path.join(self.topic_dir, "datasets.md")
-            metrics_path = os.path.join(self.topic_dir, "metrics.md")
+            survey_dir = str(self.paths.survey_dir)
+            baselines_path = str(self.paths.baselines_md)
+            datasets_path = str(self.paths.datasets_md)
+            metrics_path = str(self.paths.metrics_md)
         else:
             survey_dir = os.path.join(self.project_root, "knowledge", "survey")
             baselines_path = os.path.join(self.project_root, "knowledge", "baselines.md")
@@ -226,9 +186,9 @@ class ResearchOrchestrator:
         os.makedirs(survey_dir, exist_ok=True)
 
         # 加载/初始化进度文件
-        progress_path = os.path.join(survey_dir, "progress.yaml")
+        progress_path = str(self.paths.survey_progress)
         progress = self._load_survey_progress(progress_path)
-        paper_list_path = os.path.join(survey_dir, "paper_list.yaml")
+        paper_list_path = str(self.paths.paper_list_yaml)
 
         def completed(step_key):
             return progress.get(step_key) == "completed"
@@ -236,22 +196,23 @@ class ResearchOrchestrator:
         # Step 1: 搜索与收集
         if start_step <= 1 and not completed("step1_search"):
             self._survey_step1_search(survey_dir, paper_list_path, round_num, topic_id)
-            progress["step1_search"] = "completed"
-            self._save_survey_progress(progress, progress_path)
+            papers = self._load_paper_list(paper_list_path)
+            if papers:
+                progress["step1_search"] = "completed"
+                self._save_survey_progress(progress, progress_path)
+            else:
+                progress["step1_search"] = "failed"
+                self._save_survey_progress(progress, progress_path)
+                return "Survey aborted: Step 1 未找到任何论文"
 
-        # Step 2: 下载与解析
-        if start_step <= 2 and not completed("step2_download"):
+        # Step 2+3: 并行下载→解析→总结
+        if start_step <= 3 and not (completed("step2_download") and completed("step3_summarize")):
             progress["step2_download"] = "in_progress"
-            self._save_survey_progress(progress, progress_path)
-            self._survey_step2_download(paper_list_path)
-            progress["step2_download"] = "completed"
-            self._save_survey_progress(progress, progress_path)
-
-        # Step 3: 逐篇精读总结
-        if start_step <= 3 and not completed("step3_summarize"):
             progress["step3_summarize"] = "in_progress"
             self._save_survey_progress(progress, progress_path)
-            self._survey_step3_summarize(paper_list_path, summaries_dir, topic_id)
+            self._survey_step23_parallel(paper_list_path, summaries_dir, topic_id)
+            self._upload_step_artifacts(summaries_dir)
+            progress["step2_download"] = "completed"
             progress["step3_summarize"] = "completed"
             self._save_survey_progress(progress, progress_path)
 
@@ -260,15 +221,37 @@ class ResearchOrchestrator:
             progress["step4_repos"] = "in_progress"
             self._save_survey_progress(progress, progress_path)
             self._survey_step4_repos(survey_dir, summaries_dir)
+            self._upload_single_artifact(str(self.paths.repos_summary_md))
             progress["step4_repos"] = "completed"
+            self._save_survey_progress(progress, progress_path)
+
+        # Step 4a: EDA 规划（从论文提取分析方法）
+        if start_step <= 5 and not completed("step4a_eda_guide"):
+            progress["step4a_eda_guide"] = "in_progress"
+            self._save_survey_progress(progress, progress_path)
+            self._survey_step4a_eda_guide(summaries_dir, survey_dir,
+                                           datasets_path, metrics_path)
+            progress["step4a_eda_guide"] = "completed"
+            self._save_survey_progress(progress, progress_path)
+
+        # Step 4b: 数据下载 + EDA
+        if start_step <= 5 and not completed("step4b_data_eda"):
+            progress["step4b_data_eda"] = "in_progress"
+            self._save_survey_progress(progress, progress_path)
+            self._survey_step4b_data_eda(datasets_path)
+            self._upload_single_artifact(str(self.paths.eda_report_md))
+            progress["step4b_data_eda"] = "completed"
             self._save_survey_progress(progress, progress_path)
 
         # Step 5: 综合整理
         if start_step <= 5 and not completed("step5_synthesize"):
             progress["step5_synthesize"] = "in_progress"
             self._save_survey_progress(progress, progress_path)
-            self._survey_step5_synthesize(survey_dir, summaries_dir,
-                                          baselines_path, datasets_path, metrics_path)
+            self._survey_step5_synthesize(survey_dir, summaries_dir, baselines_path)
+            for p in [str(self.paths.survey_md),
+                      str(self.paths.leaderboard_md),
+                      baselines_path]:
+                self._upload_single_artifact(p)
             progress["step5_synthesize"] = "completed"
             self._save_survey_progress(progress, progress_path)
 
@@ -283,28 +266,26 @@ class ResearchOrchestrator:
         except Exception as e:
             logger.warning(f"索引更新失败: {e}")
 
-        # Data Agent 下载数据（无用户确认）
-        if os.path.exists(datasets_path):
-            print(f"\n{'='*60}")
-            print("启动 Data Agent 下载和准备数据集...")
-            print(f"{'='*60}")
-            data_agent = DataAgent(config_path=self.config_path, datasets_path=datasets_path)
-            data_prompt = f"请阅读 {datasets_path}，下载所有推荐的数据集，探查格式，写入 dataset cards，并更新 config.yaml（config_path={self.config_path}）。"
-            data_agent.run(data_prompt)
-            self._reload_config()
-
         # 更新研究树
         if self.topic_dir:
-            tree = _load_tree(self.topic_dir)
-            if tree:
-                tree.setdefault("root", {})
-                tree["root"]["survey"] = {"status": "completed", "rounds": round_num}
-                _save_tree(tree, self.topic_dir)
+            try:
+                tree = self.tree_service.load()
+                tree.root.survey.status = "completed"
+                tree.root.survey.rounds = round_num
+                self.tree_service.save(tree)
+            except Exception as e:
+                logger.warning(f"更新研究树失败: {e}")
 
         add_experience(phase="survey", type="insight",
                        summary=f"Survey 流水线完成（5步），共处理论文见 {paper_list_path}",
                        topic_id=topic_id)
-        self._log_phase_end("survey", summary="Survey pipeline completed")
+        paper_count = 0
+        if os.path.exists(paper_list_path):
+            with open(paper_list_path, "r", encoding="utf-8") as f:
+                papers = yaml.safe_load(f) or []
+                paper_count = len(papers)
+        survey_summary = f"Survey 完成，共处理 {paper_count} 篇论文，产出见 {survey_dir}/"
+        self._log_phase_end("survey", summary=survey_summary)
 
         print(f"\n{'='*60}")
         print("Survey 完成! 请 review:")
@@ -313,6 +294,7 @@ class ResearchOrchestrator:
         print(f"  - {baselines_path}")
         print(f"  - {datasets_path}")
         print(f"  - {metrics_path}")
+        print(f"  - {str(self.paths.eda_dir)}/ (EDA)")
         print(f"{'='*60}")
         return "Survey pipeline completed"
 
@@ -328,6 +310,8 @@ class ResearchOrchestrator:
             "step2_download": "pending",
             "step3_summarize": "pending",
             "step4_repos": "pending",
+            "step4a_eda_guide": "pending",
+            "step4b_data_eda": "pending",
             "step5_synthesize": "pending",
         }
 
@@ -356,103 +340,117 @@ class ResearchOrchestrator:
         print("  Step 1/5: 搜索与收集论文")
         print(f"{'='*60}")
 
-        agent = make_search_agent(self.config_path)
+        agent = make_search_agent(self.config_path,
+                                  allowed_dirs=[survey_dir])
 
         context = ""
         if self.ctx:
             context = self.ctx.build_context("survey")
 
-        topic = self.topic_config["topic_title"]
+        topic = self.topic_config.topic.title
         past_exp = query_memory(phase="literature")
 
-        prompt = f"开始搜索论文（第 {round_num} 轮）。\n\n研究课题: {topic}\n\n"
-        if context:
-            prompt += f"\n{context}\n"
-        prompt += f"\n请将论文列表写入 {paper_list_path}\n"
-        if round_num > 1:
-            prompt += f"\n这是第 {round_num} 轮调研，请扩大搜索范围。先读取已有的 paper_list.yaml 了解已覆盖的论文。"
-        if past_exp and "No matching" not in past_exp:
-            prompt += f"\n\n历史经验:\n{past_exp}"
+        prompt = build_search_prompt(
+            topic=topic,
+            round_num=round_num,
+            paper_list_path=paper_list_path,
+            context=context,
+            past_exp=past_exp,
+        )
 
         agent.run(prompt)
+
+        # === 写入保障 ===
+        papers = self._load_paper_list(paper_list_path)
+        if len(papers) < 3:
+            logger.warning(f"paper_list 仅 {len(papers)} 篇，从 agent 历史中恢复...")
+            recovered = self._recover_papers_from_history(agent.get_message_history())
+            if recovered:
+                existing_ids = {p.get("paper_id") for p in papers}
+                for rp in recovered:
+                    if rp.get("paper_id") not in existing_ids:
+                        papers.append(rp)
+                papers.sort(key=lambda x: x.get("citation_count", 0), reverse=True)
+                self._save_paper_list(papers, paper_list_path)
+                logger.info(f"恢复后共 {len(papers)} 篇论文")
+
         print(f"  Step 1 完成: {paper_list_path}")
 
-    def _survey_step2_download(self, paper_list_path: str):
-        """Step 2: 确定性下载 PDF + MinerU 解析（0 轮 LLM）"""
-        print(f"\n{'='*60}")
-        print("  Step 2/5: 下载与解析 PDF")
-        print(f"{'='*60}")
-
-        from tools.paper_manager import (
-            download_paper, download_paper_by_arxiv, _load_index,
-        )
-        import time
-
-        papers = self._load_paper_list(paper_list_path)
-        if not papers:
-            print("  paper_list.yaml 为空，跳过下载")
-            return
-
-        total = len(papers)
-        for idx, paper in enumerate(papers):
-            if paper.get("download_status") in ("downloaded", "no_access"):
-                print(f"  [{idx+1}/{total}] {paper.get('title', '')[:50]}... 已处理，跳过")
+    def _recover_papers_from_history(self, messages: list) -> list:
+        """从 agent 历史消息中提取 search_papers 返回的论文数据"""
+        papers = {}  # paper_id -> dict, 自动去重
+        for msg in messages:
+            content = msg.get("content", "")
+            if not isinstance(content, list):
                 continue
-
-            title = paper.get("title", "")
-            paper_id = paper.get("paper_id", "")
-            arxiv_id = paper.get("arxiv_id") or ""
-
-            print(f"  [{idx+1}/{total}] 下载: {title[:50]}...")
-
-            # 优先用 arxiv_id 直接下载
-            if arxiv_id:
-                result = download_paper_by_arxiv(arxiv_id, paper_id=paper_id, title=title)
-            else:
-                # 走 S2 openAccessPdf
-                if paper_id:
-                    result = download_paper(paper_id, title)
-                elif paper.get("open_access_url"):
-                    # 有直接 URL 但无 paper_id，跳过（少见情况）
-                    paper["download_status"] = "no_id"
-                    self._save_paper_list(papers, paper_list_path)
+            for block in content:
+                if not (isinstance(block, dict) and block.get("type") == "tool_result"):
                     continue
-                else:
-                    paper["download_status"] = "no_source"
-                    self._save_paper_list(papers, paper_list_path)
+                text = block.get("content", "")
+                try:
+                    data = json.loads(text)
+                    if not isinstance(data, list):
+                        continue
+                    for p in data:
+                        pid = p.get("paperId", "")
+                        if not pid or pid in papers:
+                            continue
+                        ext = p.get("externalIds") or {}
+                        oa = p.get("openAccessPdf") or {}
+                        papers[pid] = {
+                            "paper_id": pid,
+                            "title": p.get("title", ""),
+                            "year": p.get("year"),
+                            "citation_count": p.get("citationCount", 0),
+                            "arxiv_id": ext.get("ArXiv", ""),
+                            "venue": p.get("venue", ""),
+                            "authors": [a.get("name", "") for a in (p.get("authors") or [])[:5]],
+                            "open_access_url": oa.get("url", ""),
+                            "relevance": "",
+                            "download_status": "pending",
+                            "summary_status": "pending",
+                        }
+                except (json.JSONDecodeError, TypeError):
                     continue
+        return list(papers.values())
 
-            # 判断结果
-            if "成功" in result:
-                paper["download_status"] = "downloaded"
-            elif "没有 Open Access" in result or "下载失败" in result:
-                paper["download_status"] = "no_access"
-            elif "已下载" in result:
-                paper["download_status"] = "downloaded"
-            else:
-                paper["download_status"] = "failed"
-                logger.warning(f"  下载异常: {result[:200]}")
+    def _upload_single_artifact(self, file_path: str):
+        """上传单文件到全局知识库（session 内去重，与 phase_logger 共享去重 set）"""
+        from tools.phase_logger import _uploaded_artifact_set, derive_display_name
+        if file_path in _uploaded_artifact_set or not os.path.exists(file_path):
+            return
+        from tools.knowledge_base import SINGLE_KB_NAME
+        display_name = derive_display_name(file_path)
+        kb_id = self.kb_mgr.get_or_create_kb(SINGLE_KB_NAME, "全局研究知识库")
+        if kb_id:
+            doc_id = self.kb_mgr.upload_document(kb_id, file_path, display_name=display_name)
+            _uploaded_artifact_set.add(file_path)
+            if doc_id:
+                logger.info(f"Incremental upload: {display_name}")
 
-            # 每篇下载后立即更新（崩溃安全）
-            self._save_paper_list(papers, paper_list_path)
-            time.sleep(2)
+    def _upload_step_artifacts(self, directory: str, pattern: str = "*.md"):
+        """上传目录下匹配文件"""
+        import glob
+        for fpath in glob.glob(os.path.join(directory, pattern)):
+            self._upload_single_artifact(fpath)
 
-        downloaded = sum(1 for p in papers if p.get("download_status") == "downloaded")
-        print(f"  Step 2 完成: {downloaded}/{total} 篇已下载")
-
-    def _survey_step3_summarize(self, paper_list_path: str, summaries_dir: str,
-                                topic_id: str):
-        """Step 3: 逐篇精读总结（每篇 1 次 LLM 调用）"""
-        print(f"\n{'='*60}")
-        print("  Step 3/5: 逐篇精读总结")
-        print(f"{'='*60}")
-
+    def _survey_step23_parallel(self, paper_list_path: str, summaries_dir: str,
+                                topic_id: str, max_workers: int = 3):
+        """Step 2+3: 并行 下载→解析→总结（每篇论文独立流水线）"""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
         import anthropic as _anthropic
-        from tools.paper_manager import _load_index, _find_md_file, title_to_slug
+        from tools.paper_manager import (
+            download_paper, download_paper_by_arxiv, _load_index, _find_md_file, title_to_slug,
+        )
+
+        print(f"\n{'='*60}")
+        print(f"  Step 2+3: 并行下载与总结（{max_workers} 路并发）")
+        print(f"{'='*60}")
 
         papers = self._load_paper_list(paper_list_path)
         if not papers:
-            print("  paper_list.yaml 为空，跳过总结")
+            print("  paper_list.yaml 为空，跳过")
             return
 
         client = _anthropic.Anthropic(
@@ -460,53 +458,74 @@ class ResearchOrchestrator:
             base_url=os.environ.get("MINIMAX_BASE_URL", "https://api.minimaxi.com/anthropic"),
         )
         model = os.environ.get("MINIMAX_MODEL", "MiniMax-M2.5")
-        topic_title = self.topic_config["topic_title"]
-        index = _load_index()
+        topic_title = self.topic_config.topic.title
         os.makedirs(summaries_dir, exist_ok=True)
 
+        lock = threading.Lock()
         total = len(papers)
-        for idx, paper in enumerate(papers):
-            if paper.get("summary_status") == "done":
-                print(f"  [{idx+1}/{total}] {paper.get('title', '')[:50]}... 已总结，跳过")
-                continue
 
+        def _process_one(idx: int, paper: dict):
+            """单篇论文：下载 → 找全文 → 总结"""
             title = paper.get("title", "unknown")
             paper_id = paper.get("paper_id", "")
+            arxiv_id = paper.get("arxiv_id") or ""
             slug = title_to_slug(title)
             summary_path = os.path.join(summaries_dir, f"paper_{slug}.md")
+            tag = f"[{idx+1}/{total}]"
 
-            # 如果总结文件已存在，也标记为完成
+            # === 阶段 1: 下载 ===
+            if paper.get("download_status") not in ("downloaded", "no_access", "no_source", "no_id"):
+                if arxiv_id:
+                    result = download_paper_by_arxiv(arxiv_id, paper_id=paper_id, title=title)
+                elif paper_id:
+                    result = download_paper(paper_id, title)
+                elif paper.get("open_access_url"):
+                    paper["download_status"] = "no_id"
+                    return
+                else:
+                    paper["download_status"] = "no_source"
+                    return
+
+                if "成功" in result or "已下载" in result:
+                    paper["download_status"] = "downloaded"
+                elif "没有 Open Access" in result or "下载失败" in result:
+                    paper["download_status"] = "no_access"
+                else:
+                    paper["download_status"] = "failed"
+                    logger.warning(f"  {tag} 下载异常: {result[:200]}")
+
+                print(f"  {tag} 下载: {title[:45]}... → {paper['download_status']}")
+
+            # === 阶段 2: 总结 ===
+            if paper.get("summary_status") == "done":
+                return
             if os.path.exists(summary_path):
                 paper["summary_status"] = "done"
-                self._save_paper_list(papers, paper_list_path)
-                print(f"  [{idx+1}/{total}] {title[:50]}... 总结文件已存在，跳过")
-                continue
+                print(f"  {tag} 总结已存在，跳过")
+                return
 
-            print(f"  [{idx+1}/{total}] 总结: {title[:50]}...")
-
-            # 尝试读取 parsed markdown 全文
+            # 找全文
             paper_text = None
             abstract_only = False
 
             if paper.get("download_status") == "downloaded" and paper_id:
-                # 从 index.yaml 找 md_path
-                entry = index.get(paper_id, {})
+                # 重新加载 index（下载后可能更新了）
+                fresh_index = _load_index()
+                entry = fresh_index.get(paper_id, {})
                 md_path = entry.get("md_path")
                 if md_path and os.path.exists(md_path):
                     with open(md_path, "r", encoding="utf-8") as f:
                         paper_text = f.read()
 
             if not paper_text:
-                # 没有全文，尝试用 relevance 字段作为简要摘要
                 abstract = paper.get("relevance", "")
                 if abstract:
                     paper_text = abstract
                     abstract_only = True
                 else:
                     paper["summary_status"] = "skipped"
-                    self._save_paper_list(papers, paper_list_path)
-                    print(f"    无全文也无摘要，跳过")
-                    continue
+                    print(f"  {tag} 无全文也无摘要，跳过")
+                    return
 
             try:
                 summary = summarize_single_paper(
@@ -521,16 +540,44 @@ class ResearchOrchestrator:
                 write_file(summary_path, summary)
                 paper["summary_status"] = "done"
                 source = "摘要" if abstract_only else "全文"
-                print(f"    完成（{source}）→ {summary_path}")
+                print(f"  {tag} 总结完成（{source}）→ {os.path.basename(summary_path)}")
             except Exception as e:
                 paper["summary_status"] = "failed"
-                logger.warning(f"    总结失败: {e}")
+                logger.warning(f"  {tag} 总结失败: {e}")
 
-            # 每篇写完后立即更新（崩溃安全）
-            self._save_paper_list(papers, paper_list_path)
+        # 提交并行任务
+        futures = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for idx, paper in enumerate(papers):
+                # 跳过已完成的
+                if (paper.get("download_status") in ("downloaded", "no_access", "no_source", "no_id")
+                        and paper.get("summary_status") == "done"):
+                    print(f"  [{idx+1}/{total}] {paper.get('title', '')[:45]}... 已完成，跳过")
+                    continue
+                future = executor.submit(_process_one, idx, paper)
+                futures[future] = idx
 
-        done = sum(1 for p in papers if p.get("summary_status") == "done")
-        print(f"  Step 3 完成: {done}/{total} 篇已总结")
+            # 收集结果，定期保存
+            save_counter = 0
+            for future in as_completed(futures):
+                try:
+                    future.result()  # 触发异常
+                except Exception as e:
+                    idx = futures[future]
+                    logger.error(f"  [{idx+1}/{total}] 处理异常: {e}")
+
+                save_counter += 1
+                # 每完成 3 篇保存一次（崩溃安全 + 减少 I/O）
+                if save_counter % 3 == 0:
+                    with lock:
+                        self._save_paper_list(papers, paper_list_path)
+
+        # 最终保存
+        self._save_paper_list(papers, paper_list_path)
+
+        downloaded = sum(1 for p in papers if p.get("download_status") == "downloaded")
+        summarized = sum(1 for p in papers if p.get("summary_status") == "done")
+        print(f"  Step 2+3 完成: {downloaded}/{total} 下载, {summarized}/{total} 总结")
 
     def _survey_step4_repos(self, survey_dir: str, summaries_dir: str):
         """Step 4: Agent 搜索和分析代码仓库"""
@@ -538,44 +585,106 @@ class ResearchOrchestrator:
         print("  Step 4/5: 代码仓库调研")
         print(f"{'='*60}")
 
-        agent = make_repo_agent(self.config_path)
-        repos_summary_path = os.path.join(survey_dir, "repos_summary.md")
+        agent = make_repo_agent(self.config_path,
+                               allowed_dirs=[survey_dir, str(self.paths.repos_dir)])
+        repos_summary_path = str(self.paths.repos_summary_md)
+        paper_list_path = str(self.paths.paper_list_yaml)
 
-        prompt = f"""请调研与本课题相关的开源代码仓库。
-
-论文总结目录: {summaries_dir}
-请先用 list_directory 查看总结文件，然后读取关键论文的总结，识别有代码的论文。
-
-将调研结果写入 {repos_summary_path}"""
+        prompt = build_repo_prompt(
+            paper_list_path=paper_list_path,
+            summaries_dir=summaries_dir,
+            repos_summary_path=repos_summary_path,
+        )
 
         agent.run(prompt)
         print(f"  Step 4 完成: {repos_summary_path}")
 
-    def _survey_step5_synthesize(self, survey_dir: str, summaries_dir: str,
-                                  baselines_path: str, datasets_path: str,
-                                  metrics_path: str):
-        """Step 5: Agent 综合整理，生成综述文档"""
+    def _survey_step4a_eda_guide(self, summaries_dir: str, survey_dir: str,
+                                 datasets_path: str, metrics_path: str):
+        """Step 4a: 从论文提取分析方法，生成 EDA 规划"""
         print(f"\n{'='*60}")
-        print("  Step 5/5: 综合整理")
+        print("  Step 4a: EDA 规划（从论文提取分析方法）")
         print(f"{'='*60}")
 
-        agent = make_synthesis_agent(self.config_path)
-        repos_summary_path = os.path.join(survey_dir, "repos_summary.md")
+        eda_dir = str(self.paths.eda_dir)
+        os.makedirs(eda_dir, exist_ok=True)
 
-        prompt = f"""请基于以下材料生成综合文档:
+        agent = make_eda_guide_agent(self.config_path,
+                                     allowed_dirs=[eda_dir, str(self.paths.topic_dir)])
+        prompt = build_eda_guide_prompt(
+            summaries_dir=summaries_dir,
+            repos_summary_path=str(self.paths.repos_summary_md),
+            context_path=str(self.paths.context_md),
+            eda_guide_path=str(self.paths.eda_guide_md),
+            datasets_path=datasets_path,
+            metrics_path=metrics_path,
+        )
+        agent.run(prompt)
+        for p in [str(self.paths.eda_guide_md), datasets_path, metrics_path]:
+            self._upload_single_artifact(p)
+        print(f"  Step 4a 完成")
 
-## 材料目录
-- 论文总结: {summaries_dir}/
-- 代码仓库调研: {repos_summary_path}
+    def _survey_step4b_data_eda(self, datasets_path: str):
+        """Step 4b: 根据 EDA 指南下载数据并执行 EDA"""
+        print(f"\n{'='*60}")
+        print("  Step 4b: 数据下载与 EDA")
+        print(f"{'='*60}")
 
-## 输出文件
-1. {survey_dir}/survey.md - 综合文献综述
-2. {survey_dir}/leaderboard.md - 排行榜
-3. {baselines_path} - Baseline 方法
-4. {datasets_path} - 推荐数据集
-5. {metrics_path} - 推荐评估指标
+        eda_plots_dir = str(self.paths.eda_plots_dir)
+        eda_scripts_dir = str(self.paths.eda_scripts_dir)
+        os.makedirs(eda_plots_dir, exist_ok=True)
+        os.makedirs(eda_scripts_dir, exist_ok=True)
 
-请先用 list_directory 和 read_file 阅读所有总结文件和仓库调研报告，再生成综合文档。"""
+        # 预创建 EDA venv
+        eda_dir = str(self.paths.eda_dir)
+        from tools.venv_manager import setup_idea_venv
+        env_cfg = self.topic_config.environment
+        venv_path = str(self.paths.eda_venv_dir)
+        setup_result = setup_idea_venv(
+            eda_dir, env_cfg.python, env_cfg.pip_mirror, env_cfg.use_uv,
+        )
+        logger.info("EDA venv setup: %s", setup_result)
+
+        from .data_agent import DataAgent
+        agent = DataAgent(
+            config_path=self.config_path,
+            eda_guide_path=str(self.paths.eda_guide_md),
+            data_dir=str(self.paths.data_dir),
+            eda_dir=eda_dir,
+            eda_plots_dir=eda_plots_dir,
+            eda_scripts_dir=eda_scripts_dir,
+            eda_report_path=str(self.paths.eda_report_md),
+            datasets_path=datasets_path,
+            venv_path=venv_path if os.path.exists(os.path.join(venv_path, "bin", "activate")) else "",
+            allowed_dirs=[eda_dir, str(self.paths.data_dir), str(self.paths.topic_dir)],
+        )
+        agent.run(agent.build_prompt())
+        self._reload_config()
+        print(f"  Step 4b 完成")
+
+    def _survey_step5_synthesize(self, survey_dir: str, summaries_dir: str,
+                                  baselines_path: str):
+        """Step 5: Agent 综合整理，生成综述文档"""
+        print(f"\n{'='*60}")
+        print("  Step 5: 综合整理")
+        print(f"{'='*60}")
+
+        agent = make_synthesis_agent(self.config_path,
+                                     allowed_dirs=[survey_dir, str(self.paths.topic_dir)])
+        repos_summary_path = str(self.paths.repos_summary_md)
+        repos_exists = os.path.exists(repos_summary_path)
+
+        prompt = build_synthesis_prompt(
+            summaries_dir=summaries_dir,
+            repos_summary_path=repos_summary_path,
+            repos_exists=repos_exists,
+            survey_dir=survey_dir,
+            baselines_path=baselines_path,
+            eda_report_path=str(self.paths.eda_report_md),
+            eda_exists=os.path.exists(str(self.paths.eda_report_md)),
+            datasets_path=str(self.paths.datasets_md),
+            metrics_path=str(self.paths.metrics_md),
+        )
 
         agent.run(prompt)
         print(f"  Step 5 完成")
@@ -602,7 +711,7 @@ class ResearchOrchestrator:
             topic_papers.append(entry)
 
         index_data = {"papers": topic_papers}
-        index_path = os.path.join(survey_dir, "index.yaml")
+        index_path = str(self.paths.survey_index_yaml)
         with open(index_path, "w", encoding="utf-8") as f:
             import yaml as _yaml
             _yaml.dump(index_data, f, allow_unicode=True, default_flow_style=False)
@@ -612,7 +721,8 @@ class ResearchOrchestrator:
         self._reload_config()
         self._log_phase_start("ideation")
 
-        agent = IdeationAgent(self.config_path)
+        agent = IdeationAgent(self.config_path,
+                              allowed_dirs=[str(self.paths.ideas_dir), str(self.paths.topic_dir)])
 
         # 收集上下文
         context = ""
@@ -626,10 +736,10 @@ class ResearchOrchestrator:
         # 根据是否有 topic_dir 确定路径
         if self.topic_dir:
             paths = {
-                "survey": os.path.join(self.topic_dir, "survey", "survey.md"),
-                "baselines": os.path.join(self.topic_dir, "baselines.md"),
-                "datasets": os.path.join(self.topic_dir, "datasets.md"),
-                "metrics": os.path.join(self.topic_dir, "metrics.md"),
+                "survey": str(self.paths.survey_md),
+                "baselines": str(self.paths.baselines_md),
+                "datasets": str(self.paths.datasets_md),
+                "metrics": str(self.paths.metrics_md),
             }
         else:
             paths = {
@@ -647,52 +757,59 @@ class ResearchOrchestrator:
                 elif key == "datasets": datasets_md = content
                 elif key == "metrics": metrics_md = content
 
-        failed_path = os.path.join(self.project_root, "memory", "failed_ideas.md")
+        failed_path = str(self.paths.failed_ideas)
         if os.path.exists(failed_path):
             failed = read_file(failed_path)
 
         tc = self.topic_config
-        ideas_dir = os.path.join(self.topic_dir, "ideas") if self.topic_dir else os.path.join(self.project_root, "ideas")
+        ideas_dir = str(self.paths.ideas_dir) if self.topic_dir else os.path.join(self.project_root, "ideas")
         os.makedirs(ideas_dir, exist_ok=True)
 
-        prompt = f"""基于以下综述生成研究 idea:
-
-## 研究课题
-{tc["topic_title"]}
-
-## 综述
-{survey[:4000]}
-
-## Baselines
-{baselines[:2000]}
-
-## 可用数据集
-{datasets_md[:1000]}
-
-## 评估指标
-{metrics_md[:1000]}
-
-## 已失败的方向（避免重复）
-{failed}
-
-{context}
-
-根据 survey 和 context.md 的内容，从多个研究角度生成 idea:
-- 分析 survey 中各方法的不足，针对性提出改进
-- 从理论/方法/实验/应用等不同层面思考
-- 每个 idea 只包含一个核心创新点
-
-每个 idea 创建对应的 {ideas_dir}/{{idea_id}}_{{shortname}}/proposal.md，
-并用 add_idea_to_tree 注册到研究树。
-生成完毕后用 add_idea_relationship 记录 idea 间的关系，
-最后用 get_idea_graph 生成关系图。"""
+        prompt = agent.build_prompt(
+            topic_title=tc.topic.title,
+            survey=survey,
+            baselines=baselines,
+            datasets_md=datasets_md,
+            metrics_md=metrics_md,
+            failed=failed,
+            context=context,
+            ideas_dir=ideas_dir,
+        )
 
         result = agent.run(prompt)
+
+        # 上传所有 idea proposal 到知识库
+        if os.path.exists(ideas_dir):
+            for d in os.listdir(ideas_dir):
+                proposal_path = os.path.join(ideas_dir, d, "proposal.md")
+                self._upload_single_artifact(proposal_path)
+
+        # 评分与排序
+        from tools.idea_scorer import score_all_ideas
+        print("\n  正在对 idea 进行评分...")
+        try:
+            score_results = score_all_ideas(
+                topic_dir=self.topic_dir,
+                client=agent.client,
+                model=agent.model,
+                topic_title=tc.topic.title,
+                tree_service=self.tree_service,
+                paths=self.paths,
+            )
+            if score_results:
+                print(f"\n  {'─'*50}")
+                print(f"  Idea 评分排名:")
+                for sr in score_results:
+                    status_icon = "★" if sr["status"] == "recommended" else ("○" if sr["status"] == "proposed" else "✗")
+                    print(f"    {status_icon} {sr['idea_id']}: {sr['composite']:.2f} - {sr['title'][:50]}")
+                print(f"  {'─'*50}")
+        except Exception as e:
+            logger.warning(f"Idea 评分失败（不影响 ideation 结果）: {e}")
 
         self._log_phase_end("ideation", summary=result[:200])
 
         print(f"\n{'='*60}")
-        print(f"Ideation 完成! 请 review {ideas_dir}/ 目录下的 proposal.md")
+        print(f"Ideation 完成! 请 review {ideas_dir}/ 目录下的 proposal.md 和 review.md")
         print(f"{'='*60}")
         return result
 
@@ -702,52 +819,45 @@ class ResearchOrchestrator:
         self._reload_config()
         self._log_phase_start("refine", idea_id)
 
-        idea_dir = self._idea_dir(idea_id)
-        if not idea_dir:
+        idea_dir_path = self.paths.idea_dir(idea_id)
+        if not idea_dir_path:
             return f"未找到 idea 目录: {idea_id}"
+        idea_dir = str(idea_dir_path)
 
-        agent = RefinementAgent(self.config_path)
+        agent = RefinementAgent(self.config_path, allowed_dirs=[idea_dir])
 
         # 构建上下文
         context = ""
         if self.ctx:
             context = self.ctx.build_context("refine", idea_id, ref_ideas, ref_topics)
 
-        proposal = read_file(os.path.join(idea_dir, "proposal.md"))
+        proposal = read_file(str(self.paths.idea_proposal(idea_id)))
         past_exp = query_memory(idea_id=idea_id)
 
         # 创建 refinement 目录
-        refinement_dir = os.path.join(idea_dir, "refinement")
+        refinement_dir = str(self.paths.idea_refinement_dir(idea_id))
         os.makedirs(refinement_dir, exist_ok=True)
 
         tc = self.topic_config
 
-        prompt = f"""请将以下 idea 展开为完整技术方案。
-
-## 研究课题
-{tc["topic_title"]}
-
-## 可用数据集
-{tc["dataset_names"]}
-
-## 评估指标
-{tc["metric_names"]}
-
-## Proposal
-{proposal}
-
-{context}
-
-## 历史经验
-{past_exp}
-
-请输出:
-1. {refinement_dir}/theory.md - 理论推导
-2. {refinement_dir}/model_modular.md - 模块化结构设计
-3. {refinement_dir}/model_complete.md - 完整结构设计
-4. {idea_dir}/experiment_plan.md - 阶段性实验计划（含预期结果）"""
+        prompt = agent.build_prompt(
+            topic_title=tc.topic.title,
+            dataset_names=tc.dataset_names,
+            metric_names=tc.metric_names,
+            topic_dir=self.topic_dir,
+            idea_dir=idea_dir,
+            proposal=proposal,
+            context=context,
+            past_exp=past_exp,
+            refinement_dir=refinement_dir,
+        )
 
         result = agent.run(prompt)
+
+        # 上传产出物到知识库
+        self._upload_step_artifacts(refinement_dir)
+        exp_plan_path = str(self.paths.idea_experiment_plan(idea_id))
+        self._upload_single_artifact(exp_plan_path)
 
         # 更新研究树
         self._update_idea_phase(idea_id, "refinement", "completed")
@@ -764,30 +874,22 @@ class ResearchOrchestrator:
         self._reload_config()
         self._log_phase_start("code_reference", idea_id)
 
-        idea_dir = self._idea_dir(idea_id)
-        if not idea_dir:
+        idea_dir_path = self.paths.idea_dir(idea_id)
+        if not idea_dir_path:
             return f"未找到 idea 目录: {idea_id}"
+        idea_dir = str(idea_dir_path)
 
-        # 使用 LiteratureAgent 来获取代码参考
-        agent = LiteratureAgent(self.config_path)
+        agent = make_code_ref_agent(allowed_dirs=[idea_dir, str(self.paths.repos_dir)])
 
         # 读取 refinement 文档
-        refinement_dir = os.path.join(idea_dir, "refinement")
+        refinement_dir = str(self.paths.idea_refinement_dir(idea_id))
         ref_content = ""
         for fname in ["theory.md", "model_modular.md"]:
             fpath = os.path.join(refinement_dir, fname)
             if os.path.exists(fpath):
-                ref_content += f"\n## {fname}\n{read_file(fpath)[:2000]}\n"
+                ref_content += f"\n## {fname}\n{read_file(fpath)[:20000]}\n"
 
-        prompt = f"""根据以下 idea 的 refinement 文档，找到相关论文的开源代码:
-
-{ref_content}
-
-请:
-1. 搜索相关论文的 GitHub 仓库
-2. 用 clone_repo 拉取代码
-3. 用 summarize_repo 生成代码摘要
-4. 重点关注模型结构和训练方法的实现"""
+        prompt = build_code_ref_prompt(ref_content=ref_content)
 
         result = agent.run(prompt)
 
@@ -802,11 +904,13 @@ class ResearchOrchestrator:
         self._reload_config()
         self._log_phase_start("code", idea_id)
 
-        idea_dir = self._idea_dir(idea_id)
-        if not idea_dir:
+        idea_dir_path = self.paths.idea_dir(idea_id)
+        if not idea_dir_path:
             return f"未找到 idea 目录: {idea_id}"
+        idea_dir = str(idea_dir_path)
 
-        agent = ExperimentAgent(self.config_path)
+        agent = ExperimentAgent(self.config_path,
+                                allowed_dirs=[idea_dir, str(self.paths.data_dir)])
 
         # 构建上下文
         context = ""
@@ -815,33 +919,36 @@ class ResearchOrchestrator:
 
         # 读取 refinement 文档
         design_content = ""
-        refinement_dir = os.path.join(idea_dir, "refinement")
+        refinement_dir = str(self.paths.idea_refinement_dir(idea_id))
         for fname in ["theory.md", "model_modular.md", "model_complete.md"]:
             fpath = os.path.join(refinement_dir, fname)
             if os.path.exists(fpath):
                 design_content += f"\n## {fname}\n{read_file(fpath)}\n"
 
-        plan_path = os.path.join(idea_dir, "experiment_plan.md")
+        plan_path = str(self.paths.idea_experiment_plan(idea_id))
         plan = read_file(plan_path) if os.path.exists(plan_path) else ""
         past_exp = query_memory(idea_id=idea_id)
 
-        prompt = f"""根据设计方案和实验计划，实现代码。
-
-## 技术方案
-{design_content}
-
-## 实验计划
-{plan}
-
-{context}
-
-## 历史经验
-{past_exp}
-
-代码放在 {idea_dir}/src/（model/ 和 experiment/ 子目录），
-先生成 {idea_dir}/src/structure.md 记录代码结构。"""
+        prompt = agent.build_code_prompt(
+            design_content=design_content,
+            plan=plan,
+            context=context,
+            past_exp=past_exp,
+            idea_dir=idea_dir,
+        )
 
         result = agent.run(prompt)
+
+        # 上传代码结构文档到知识库
+        src_dir = self.paths.idea_src_dir(idea_id)
+        structure_path = str(src_dir / "structure.md") if src_dir else None
+        if structure_path:
+            self._upload_single_artifact(structure_path)
+
+        # 自动配置 venv 并安装依赖
+        if src_dir:
+            venv_result = self._setup_idea_env(idea_id, src_dir)
+            result += f"\n\n[环境配置] {venv_result}"
 
         self._update_idea_phase(idea_id, "coding", "completed")
         self._log_phase_end("code", idea_id, result[:200])
@@ -853,9 +960,10 @@ class ResearchOrchestrator:
                          version: int = None, max_iter: int = None) -> str:
         """运行单次实验（指定步骤和版本）"""
         self._reload_config()
-        idea_dir = self._idea_dir(idea_id)
-        if not idea_dir:
+        idea_dir_path = self.paths.idea_dir(idea_id)
+        if not idea_dir_path:
             return f"未找到 idea 目录: {idea_id}"
+        idea_dir = str(idea_dir_path)
 
         if not step_id:
             step_id = "S01"
@@ -864,57 +972,49 @@ class ResearchOrchestrator:
 
         self._log_phase_start("experiment", f"{idea_id}_{step_id}_V{version}")
 
-        agent = ExperimentAgent(self.config_path)
+        agent = ExperimentAgent(self.config_path,
+                                allowed_dirs=[idea_dir, str(self.paths.data_dir)])
 
         # 读取实验计划
-        plan_path = os.path.join(idea_dir, "experiment_plan.md")
+        plan_path = str(self.paths.idea_experiment_plan(idea_id))
         plan = read_file(plan_path) if os.path.exists(plan_path) else ""
 
         # 读取代码结构
-        structure_path = os.path.join(idea_dir, "src", "structure.md")
-        structure = read_file(structure_path) if os.path.exists(structure_path) else ""
+        src_dir = self.paths.idea_src_dir(idea_id)
+        structure_path = str(src_dir / "structure.md") if src_dir else None
+        structure = read_file(structure_path) if structure_path and os.path.exists(structure_path) else ""
 
         # V2+ 读取前版本分析
         prev_analysis = ""
         if version > 1:
-            step_d = self._step_dir(idea_id, step_id)
-            if step_d:
-                prev_v_dir = os.path.join(step_d, f"V{version - 1}")
-                prev_analysis_path = os.path.join(prev_v_dir, "analysis.md")
+            prev_v_dir = self.paths.version_dir(idea_id, step_id, version - 1)
+            if prev_v_dir:
+                prev_analysis_path = str(prev_v_dir / "analysis.md")
                 if os.path.exists(prev_analysis_path):
                     prev_analysis = read_file(prev_analysis_path)
 
         # 确定结果目录
-        results_dir = os.path.join(idea_dir, "results")
+        results_dir = str(self.paths.idea_results_dir(idea_id))
         os.makedirs(results_dir, exist_ok=True)
 
-        prompt = f"""运行实验步骤 {step_id}，版本 V{version}。
+        # 确定 venv 路径
+        venv_dir = self.paths.idea_venv_dir(idea_id)
+        venv_path = str(venv_dir) if venv_dir and venv_dir.exists() else ""
 
-## 实验计划
-{plan}
-
-## 代码结构
-{structure}
-"""
-        if prev_analysis:
-            prompt += f"""
-## 前版本 (V{version-1}) 分析结果
-{prev_analysis}
-
-请根据上述分析结果，微调实验设置后重新运行。
-将配置差异记录到 config_diff.md。
-"""
-
-        prompt += f"""
-结果存储到 {results_dir}/{step_id}_*/V{version}/
-包含: metrics.json, plots/, log.txt"""
-        if version > 1:
-            prompt += f", config_diff.md"
+        prompt = agent.build_experiment_prompt(
+            step_id=step_id,
+            version=version,
+            plan=plan,
+            structure=structure,
+            prev_analysis=prev_analysis,
+            results_dir=results_dir,
+            venv_path=venv_path,
+        )
 
         result = agent.run(prompt)
 
         # 更新迭代状态
-        update_iteration(idea_id, step_id, version, "completed", topic_dir=self.topic_dir)
+        self.tree_service.update_iteration(idea_id, step_id, version, "completed")
 
         self._log_phase_end("experiment", f"{idea_id}_{step_id}_V{version}", result[:200])
 
@@ -931,7 +1031,7 @@ class ResearchOrchestrator:
 
         # 注册实验步骤
         step_name = step_id.replace("S", "step_")
-        add_experiment_step(idea_id, step_name, max_iter, self.topic_dir)
+        self.tree_service.add_experiment_step(idea_id, step_name, max_iter)
 
         results = []
         for v in range(1, max_iter + 1):
@@ -946,20 +1046,18 @@ class ResearchOrchestrator:
             results.append(f"V{v} analysis: {analysis_result[:100]}")
 
             # 检查是否提前终止（分析建议停止）
-            idea_dir = self._idea_dir(idea_id)
-            if idea_dir:
-                step_d = self._step_dir(idea_id, step_id)
-                if step_d:
-                    v_analysis = os.path.join(step_d, f"V{v}", "analysis.md")
-                    if os.path.exists(v_analysis):
-                        analysis_content = read_file(v_analysis)
-                        if "建议停止" in analysis_content or "无需继续" in analysis_content:
-                            print(f"分析建议停止迭代，在 V{v} 终止。")
-                            # 标记剩余迭代为 skipped
-                            for sv in range(v + 1, max_iter + 1):
-                                update_iteration(idea_id, step_id, sv, "skipped",
-                                                 topic_dir=self.topic_dir)
-                            break
+            v_dir = self.paths.version_dir(idea_id, step_id, v)
+            if v_dir:
+                v_analysis = str(v_dir / "analysis.md")
+                if os.path.exists(v_analysis):
+                    analysis_content = read_file(v_analysis)
+                    if "建议停止" in analysis_content or "无需继续" in analysis_content:
+                        print(f"分析建议停止迭代，在 V{v} 终止。")
+                        # 标记剩余迭代为 skipped
+                        for sv in range(v + 1, max_iter + 1):
+                            self.tree_service.update_iteration(
+                                idea_id, step_id, sv, "skipped")
+                        break
 
         return "\n".join(results)
 
@@ -969,11 +1067,13 @@ class ResearchOrchestrator:
         self._reload_config()
         self._log_phase_start("analyze", idea_id)
 
-        idea_dir = self._idea_dir(idea_id)
-        if not idea_dir:
+        idea_dir_path = self.paths.idea_dir(idea_id)
+        if not idea_dir_path:
             return f"未找到 idea 目录: {idea_id}"
+        idea_dir = str(idea_dir_path)
 
-        agent = AnalysisAgent(self.config_path)
+        agent = AnalysisAgent(self.config_path,
+                              allowed_dirs=[idea_dir, str(self.paths.memory_dir)])
 
         # 收集所有相关文件
         files_content = []
@@ -983,16 +1083,16 @@ class ResearchOrchestrator:
                 files_content.append(f"## {fname}\n{read_file(fpath)}")
 
         # 读取 refinement
-        refinement_dir = os.path.join(idea_dir, "refinement")
+        refinement_dir = str(self.paths.idea_refinement_dir(idea_id))
         if os.path.exists(refinement_dir):
             for fname in os.listdir(refinement_dir):
                 if fname.endswith(".md"):
                     fpath = os.path.join(refinement_dir, fname)
-                    files_content.append(f"## refinement/{fname}\n{read_file(fpath)[:2000]}")
+                    files_content.append(f"## refinement/{fname}\n{read_file(fpath)[:20000]}")
 
         # 读取结果
         results_info = ""
-        results_dir = os.path.join(idea_dir, "results")
+        results_dir = str(self.paths.idea_results_dir(idea_id))
         if os.path.exists(results_dir):
             if step_id:
                 # 逐步分析
@@ -1016,34 +1116,28 @@ class ResearchOrchestrator:
 
         tc = self.topic_config
 
-        prompt = f"""分析以下实验结果，提供决策建议。
-
-## 研究课题
-{tc["topic_title"]}
-
-## 评估指标
-{tc["metric_names"]}
-
-{chr(10).join(files_content)}
-
-## 实验结果
-{results_info}
-
-请:
-1. 对比 baseline 的定量结果
-2. 与 experiment_plan.md 中的预期结果对比
-3. 对 results/ 下的图片调用 analyze_image 分析
-"""
-        if step_id and version:
-            prompt += f"""4. 这是 {step_id} 的 V{version} 版本分析
-5. 将单版本分析写入 results/{step_id}_*/V{version}/analysis.md
-6. 如果还有后续迭代，给出下一版本的微调建议"""
-        else:
-            prompt += f"""4. 将总体分析写入 {idea_dir}/analysis.md
-5. 给出明确的决策建议（继续深化/调整方向/放弃/发表）
-6. 将关键经验记录到 memory"""
+        prompt = agent.build_prompt(
+            topic_title=tc.topic.title,
+            metric_names=tc.metric_names,
+            files_content=files_content,
+            results_info=results_info,
+            step_id=step_id,
+            version=version,
+            idea_dir=idea_dir,
+        )
 
         result = agent.run(prompt)
+
+        # 上传分析结果到知识库
+        if step_id and version:
+            v_dir = self.paths.version_dir(idea_id, step_id, version)
+            if v_dir:
+                analysis_path = str(v_dir / "analysis.md")
+                self._upload_single_artifact(analysis_path)
+        else:
+            analysis_p = self.paths.idea_analysis(idea_id)
+            if analysis_p:
+                self._upload_single_artifact(str(analysis_p))
 
         if not step_id:
             self._update_idea_phase(idea_id, "analysis", "completed")
@@ -1058,39 +1152,117 @@ class ResearchOrchestrator:
         self._reload_config()
         self._log_phase_start("conclude", idea_id)
 
-        idea_dir = self._idea_dir(idea_id)
-        if not idea_dir:
+        idea_dir_path = self.paths.idea_dir(idea_id)
+        if not idea_dir_path:
             return f"未找到 idea 目录: {idea_id}"
+        idea_dir = str(idea_dir_path)
 
-        agent = ConclusionAgent(self.config_path)
+        agent = ConclusionAgent(self.config_path,
+                                allowed_dirs=[idea_dir, str(self.paths.memory_dir)])
 
         # 构建上下文
         context = ""
         if self.ctx:
             context = self.ctx.build_context("conclude", idea_id, ref_ideas)
 
-        prompt = f"""请对 idea {idea_id} 进行客观总结。
-
-Idea 目录: {idea_dir}
-
-请阅读以下文件链路:
-1. {idea_dir}/proposal.md
-2. {idea_dir}/refinement/ (theory.md, model_modular.md, model_complete.md)
-3. {idea_dir}/experiment_plan.md
-4. {idea_dir}/src/ (代码实现)
-5. {idea_dir}/results/ (实验结果)
-6. {idea_dir}/analysis.md
-
-{context}
-
-将结论写入 {idea_dir}/conclusion.md"""
+        prompt = agent.build_prompt(
+            idea_id=idea_id,
+            idea_dir=idea_dir,
+            context=context,
+        )
 
         result = agent.run(prompt)
+
+        # 上传结论到知识库
+        conclusion_path = self.paths.idea_conclusion(idea_id)
+        if conclusion_path:
+            self._upload_single_artifact(str(conclusion_path))
 
         self._update_idea_phase(idea_id, "conclusion", "completed")
         self._log_phase_end("conclude", idea_id, result[:200])
 
         print(f"\nConclusion 完成! 请 review {idea_dir}/conclusion.md")
+        return result
+
+    def phase_theory_check(self, idea_id: str, feedback: str = "") -> str:
+        """理论检查：对 refinement 产出进行交叉验证"""
+        self._reload_config()
+        self._log_phase_start("theory_check", idea_id)
+
+        idea_dir_path = self.paths.idea_dir(idea_id)
+        if not idea_dir_path:
+            return f"未找到 idea 目录: {idea_id}"
+
+        refinement_dir = self.paths.idea_refinement_dir(idea_id)
+        if not refinement_dir:
+            return f"未找到 refinement 目录: {idea_id}"
+
+        agent = TheoryCheckAgent(self.config_path,
+                                 allowed_dirs=[str(idea_dir_path)])
+
+        theory_path = str(refinement_dir / "theory.md")
+        survey_path = str(self.paths.survey_md)
+        proposal_path = str(self.paths.idea_proposal(idea_id))
+        output_path = str(refinement_dir / "theory_review.md")
+
+        prompt = agent.build_prompt(
+            theory_path=theory_path,
+            survey_path=survey_path,
+            proposal_path=proposal_path,
+            output_path=output_path,
+            feedback=feedback,
+        )
+
+        result = agent.run(prompt)
+
+        self._upload_single_artifact(output_path)
+        self._update_idea_phase(idea_id, "theory_check", "completed")
+        self._log_phase_end("theory_check", idea_id, result[:200])
+
+        print(f"\nTheory Check 完成! 请 review: {output_path}")
+        return result
+
+    def phase_debug(self, idea_id: str, feedback: str = "") -> str:
+        """调试：运行测试、修复 bug"""
+        self._reload_config()
+        self._log_phase_start("debug", idea_id)
+
+        idea_dir_path = self.paths.idea_dir(idea_id)
+        if not idea_dir_path:
+            return f"未找到 idea 目录: {idea_id}"
+
+        agent = DebugAgent(self.config_path,
+                           allowed_dirs=[str(idea_dir_path)])
+
+        src_dir = str(idea_dir_path / "src")
+        structure_path = str(idea_dir_path / "src" / "structure.md")
+        plan_path = str(idea_dir_path / "experiment_plan.md")
+
+        prompt = agent.build_prompt(
+            idea_dir=str(idea_dir_path),
+            src_dir=src_dir,
+            structure_path=structure_path,
+            plan_path=plan_path,
+            feedback=feedback,
+        )
+
+        result = agent.run(prompt)
+
+        self._update_idea_phase(idea_id, "debug", "completed")
+        self._log_phase_end("debug", idea_id, result[:200])
+
+        print(f"\nDebug 完成! 请 review: {src_dir}/debug_report.md")
+        return result
+
+    def phase_deep_survey(self, queries: list = None) -> str:
+        """深度文献调研：针对特定方向补充文献"""
+        self._reload_config()
+        self._log_phase_start("deep_survey")
+        # 复用 phase_survey 的流水线，增加轮次
+        tree = self.tree_service.load()
+        current_rounds = tree.root.survey.rounds or 1
+        result = self.phase_survey(round_num=current_rounds + 1)
+        self._log_phase_end("deep_survey", summary=result[:200])
         return result
 
     def phase_auto(self, idea_id: str, start_phase: str = "refine",
@@ -1127,7 +1299,11 @@ Idea 目录: {idea_dir}
             results.append(f"{phase}: {r[:100]}")
 
             # 暂停让用户确认
-            action = input(f"\n{phase} 完成。[继续(c) / 退出(q)]: ").strip().lower()
+            try:
+                action = input(f"\n{phase} 完成。[继续(c) / 退出(q)]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n  stdin 不可用，自动继续")
+                action = "c"
             if action == "q":
                 break
 
@@ -1143,7 +1319,7 @@ Idea 目录: {idea_dir}
         for f in sorted(os.listdir(dir_path)):
             fpath = os.path.join(dir_path, f)
             if f.endswith((".txt", ".md", ".csv", ".json")) and os.path.isfile(fpath):
-                info += f"\n#### {f}\n{read_file(fpath)[:1000]}\n"
+                info += f"\n#### {f}\n{read_file(fpath)[:10000]}\n"
         return info
 
     def _read_step_results(self, step_path: str) -> str:
@@ -1157,22 +1333,37 @@ Idea 目录: {idea_dir}
         # 步骤级分析
         analysis_path = os.path.join(step_path, "analysis.md")
         if os.path.exists(analysis_path):
-            info += f"\n#### 综合分析\n{read_file(analysis_path)[:1000]}\n"
+            info += f"\n#### 综合分析\n{read_file(analysis_path)[:10000]}\n"
         return info
+
+    def _setup_idea_env(self, idea_id: str, src_dir) -> str:
+        """为 idea 创建 venv 并安装依赖"""
+        from tools.venv_manager import setup_idea_venv
+        from pathlib import Path
+        src_dir = Path(src_dir)
+        req_path = src_dir / "requirements.txt"
+        if not req_path.exists():
+            return "未找到 requirements.txt，跳过环境配置"
+        env_cfg = self.topic_config.environment
+        return setup_idea_venv(
+            idea_src_dir=str(src_dir),
+            python_version=env_cfg.python,
+            pip_mirror=env_cfg.pip_mirror,
+            use_uv=env_cfg.use_uv,
+        )
 
     def _update_idea_phase(self, idea_id: str, phase_name: str, status: str):
         """更新研究树中 idea 的阶段状态"""
-        tree = _load_tree(self.topic_dir)
-        if not tree:
+        try:
+            tree = self.tree_service.load()
+        except Exception:
             return
 
-        if tree:
-            for i, idea in enumerate(tree.get("root", {}).get("ideas", [])):
-                if idea["id"] == idea_id:
-                    idea.setdefault("phases", {})
-                    idea["phases"][phase_name] = status
-                    _save_tree(tree, self.topic_dir)
-                    return
+        for idea in tree.root.ideas:
+            if idea.id == idea_id or idea.id.endswith(f"-{idea_id}"):
+                setattr(idea.phases, phase_name, PhaseState(status))
+                self.tree_service.save(tree)
+                return
 
     def _get_topic_id(self) -> str:
         """获取当前 topic ID"""
@@ -1185,45 +1376,39 @@ Idea 目录: {idea_dir}
 
     def status(self, topic_id: str = None) -> str:
         """打印研究树当前状态"""
-        # 尝试从 topic 目录加载
-        if topic_id and self.topic_dir:
-            tree = _load_tree(self.topic_dir)
-        elif self.topic_dir:
-            tree = _load_tree(self.topic_dir)
-        else:
-            tree = _load_tree()
-
-        if not tree:
+        try:
+            tree = self.tree_service.load()
+        except Exception:
             return "未找到研究树。"
 
         lines = []
-        root = tree.get("root", {})
-        lines.append(f"课题: {root.get('topic', root.get('topic_brief', ''))}")
-        lines.append(f"Topic ID: {root.get('topic_id', 'N/A')}")
+        root = tree.root
+        lines.append(f"课题: {root.topic or root.topic_brief or ''}")
+        lines.append(f"Topic ID: {root.topic_id or 'N/A'}")
 
         # elaborate 状态
-        elaborate = root.get("elaborate", {})
-        if elaborate:
-            lines.append(f"展开调研: {elaborate.get('status', 'N/A')}")
+        if root.elaborate:
+            lines.append(f"展开调研: {root.elaborate.status or 'N/A'}")
 
         # survey 状态
-        survey = root.get("survey", root.get("literature", {}))
-        if survey:
-            lines.append(f"文献调研: {survey.get('status', 'N/A')} (轮次: {survey.get('rounds', 'N/A')})")
+        if root.survey:
+            lines.append(f"文献调研: {root.survey.status or 'N/A'} (轮次: {root.survey.rounds or 'N/A'})")
 
         # ideas
-        ideas = root.get("ideas", [])
+        ideas = root.ideas
         lines.append(f"\nIdeas ({len(ideas)} 个):")
         for idea in ideas:
-            lines.append(f"  [{idea.get('id')}] {idea.get('title')} ({idea.get('status', '')})")
-            phases = idea.get("phases", {})
-            for p, s in phases.items():
-                lines.append(f"    - {p}: {s}")
+            lines.append(f"  [{idea.id}] {idea.title} ({idea.status or ''})")
+            phases = idea.phases
+            if phases:
+                for p_name in ["refinement", "theory_check", "code_reference", "coding", "debug", "experiment", "analysis", "conclusion"]:
+                    val = getattr(phases, p_name, None)
+                    if val:
+                        lines.append(f"    - {p_name}: {val}")
             # 实验步骤
-            steps = idea.get("experiment_steps", [])
-            for step in steps:
-                lines.append(f"    实验 {step['step_id']} ({step['name']}): {step['status']}")
-                for it in step.get("iterations", []):
-                    lines.append(f"      V{it['version']}: {it['status']}")
+            for step in idea.experiment_steps:
+                lines.append(f"    实验 {step.step_id} ({step.name}): {step.status}")
+                for it in step.iterations:
+                    lines.append(f"      V{it.version}: {it.status}")
 
         return "\n".join(lines)

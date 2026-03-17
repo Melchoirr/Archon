@@ -115,32 +115,3 @@ def list_repos() -> str:
     if not repos:
         return "No repositories cloned yet."
     return "Cloned repositories:\n" + "\n".join(repos)
-
-
-CLONE_REPO_SCHEMA = {
-    "description": "Git clone 一个 GitHub 仓库到 knowledge/repos/ 目录（浅克隆）",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "repo_url": {"type": "string", "description": "GitHub 仓库 URL"},
-            "target_dir": {"type": "string", "description": "目标目录名（可选，默认从 URL 推断）", "default": ""},
-        },
-        "required": ["repo_url"],
-    },
-}
-
-SUMMARIZE_REPO_SCHEMA = {
-    "description": "用 claude -p 生成仓库代码摘要，输出 SUMMARY.md",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "repo_path": {"type": "string", "description": "仓库路径（如 knowledge/repos/repo_name）"},
-        },
-        "required": ["repo_path"],
-    },
-}
-
-LIST_REPOS_SCHEMA = {
-    "description": "列出已 clone 的仓库列表",
-    "parameters": {"type": "object", "properties": {}, "required": []},
-}

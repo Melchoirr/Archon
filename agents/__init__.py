@@ -1,6 +1,5 @@
 from .base_agent import BaseAgent
 from .orchestrator import ResearchOrchestrator
-from .literature_agent import LiteratureAgent
 from .ideation_agent import IdeationAgent
 from .design_agent import DesignAgent
 from .experiment_agent import ExperimentAgent
@@ -9,3 +8,6 @@ from .data_agent import DataAgent
 from .elaborate_agent import ElaborateAgent
 from .refinement_agent import RefinementAgent
 from .conclusion_agent import ConclusionAgent
+from .theory_check_agent import TheoryCheckAgent
+from .debug_agent import DebugAgent
+from .fsm_engine import ResearchFSM

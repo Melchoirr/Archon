@@ -1,5 +1,6 @@
-"""论文管理工具：下载 PDF、MinerU 解析为 Markdown、按需阅读章节"""
+"""论文管理工具：下载 PDF、解析为 Markdown（智谱API优先，MinerU fallback）、按需阅读章节"""
 import json
+import logging
 import os
 import re
 import subprocess
@@ -7,49 +8,132 @@ import requests
 import yaml
 from difflib import SequenceMatcher
 
-BASE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge", "papers")
-PDF_DIR = os.path.join(BASE_DIR, "pdf")
-MD_DIR = os.path.join(BASE_DIR, "parsed")
-INDEX_PATH = os.path.join(BASE_DIR, "index.yaml")
+logger = logging.getLogger(__name__)
 
-SS_API = "https://api.semanticscholar.org/graph/v1"
+OPENALEX_API = "https://api.openalex.org"
 
-SUMMARIES_DIR = os.path.join(BASE_DIR, "summaries")
-
-os.makedirs(PDF_DIR, exist_ok=True)
-os.makedirs(MD_DIR, exist_ok=True)
-os.makedirs(SUMMARIES_DIR, exist_ok=True)
+# 解析后端: "zhipu" (默认) 或 "mineru"
+PARSE_BACKEND = os.environ.get("PAPER_PARSE_BACKEND", "zhipu")
 
 
-def _load_index() -> dict:
-    if os.path.exists(INDEX_PATH):
-        with open(INDEX_PATH, "r") as f:
-            return yaml.safe_load(f) or {}
+def _default_base_dir() -> str:
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge", "papers")
+
+
+def _get_paths(base_dir: str = "") -> dict:
+    """Return resolved directory/file paths, creating dirs as needed."""
+    base = base_dir or _default_base_dir()
+    paths = {
+        "base_dir": base,
+        "pdf_dir": os.path.join(base, "pdf"),
+        "md_dir": os.path.join(base, "parsed"),
+        "index_path": os.path.join(base, "index.yaml"),
+        "summaries_dir": os.path.join(base, "summaries"),
+    }
+    os.makedirs(paths["pdf_dir"], exist_ok=True)
+    os.makedirs(paths["md_dir"], exist_ok=True)
+    os.makedirs(paths["summaries_dir"], exist_ok=True)
+    return paths
+
+import threading
+_index_lock = threading.Lock()
+
+
+def _load_index(index_path: str = "") -> dict:
+    if not index_path:
+        index_path = _get_paths()["index_path"]
+    with _index_lock:
+        if os.path.exists(index_path):
+            with open(index_path, "r") as f:
+                return yaml.safe_load(f) or {}
     return {}
 
 
-def _save_index(index: dict):
-    with open(INDEX_PATH, "w") as f:
-        yaml.dump(index, f, allow_unicode=True, default_flow_style=False)
+def _save_index(index: dict, index_path: str = ""):
+    if not index_path:
+        index_path = _get_paths()["index_path"]
+    with _index_lock:
+        with open(index_path, "w") as f:
+            yaml.dump(index, f, allow_unicode=True, default_flow_style=False)
+
+
+def _update_index(paper_id: str, entry: dict, index_path: str = ""):
+    """原子更新 index 中的单条记录（线程安全）"""
+    if not index_path:
+        index_path = _get_paths()["index_path"]
+    with _index_lock:
+        if os.path.exists(index_path):
+            with open(index_path, "r") as f:
+                index = yaml.safe_load(f) or {}
+        else:
+            index = {}
+        index[paper_id] = entry
+        with open(index_path, "w") as f:
+            yaml.dump(index, f, allow_unicode=True, default_flow_style=False)
 
 
 def _get_pdf_url(paper_id: str) -> tuple[str | None, str]:
-    """从 Semantic Scholar 获取 Open Access PDF URL。返回 (url, title)"""
+    """获取论文的 Open Access PDF URL。支持 OpenAlex (W*) 和 arXiv ID。返回 (url, title)"""
+    import re as _re
     import time
-    url = f"{SS_API}/paper/{paper_id}"
-    params = {"fields": "openAccessPdf,title"}
-    for attempt in range(3):
-        resp = requests.get(url, params=params, timeout=30)
-        if resp.status_code == 429:
-            time.sleep(3 * (attempt + 1))
-            continue
-        resp.raise_for_status()
-        data = resp.json()
-        title = data.get("title", "")
-        oa = data.get("openAccessPdf")
-        if oa and oa.get("url"):
-            return oa["url"], title
-        return None, title
+
+    # arXiv ID → 直接构造 URL
+    arxiv_match = _re.match(r"^(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)$", paper_id, _re.IGNORECASE)
+    if arxiv_match:
+        aid = arxiv_match.group(1)
+        return f"https://arxiv.org/pdf/{aid}", ""
+
+    # OpenAlex W* ID → 调 OpenAlex API
+    if paper_id.startswith("W") and paper_id[1:].isdigit():
+        params = {"select": "id,display_name,open_access,best_oa_location,locations"}
+        api_key = os.environ.get("OPENALEX_API_KEY", "")
+        if api_key:
+            params["api_key"] = api_key
+        email = os.environ.get("OPENALEX_EMAIL", "")
+        if email:
+            params["mailto"] = email
+        url = f"{OPENALEX_API}/works/{paper_id}"
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, params=params, timeout=30)
+            except requests.RequestException:
+                time.sleep(2 * (attempt + 1))
+                continue
+            if resp.status_code == 429:
+                time.sleep(2 * (attempt + 1))
+                continue
+            if resp.status_code == 404:
+                return None, ""
+            resp.raise_for_status()
+            data = resp.json()
+            title = data.get("display_name", "")
+
+            # 从 open_access 获取
+            oa = data.get("open_access") or {}
+            oa_url = oa.get("oa_url", "")
+            if oa_url:
+                return oa_url, title
+
+            # 从 best_oa_location 获取
+            best = data.get("best_oa_location") or {}
+            pdf_url = best.get("pdf_url") or best.get("landing_page_url") or ""
+            if pdf_url:
+                return pdf_url, title
+
+            # 从 locations 中找 arXiv
+            for loc in data.get("locations") or []:
+                source = loc.get("source") or {}
+                if "arxiv" in (source.get("display_name") or "").lower():
+                    landing = loc.get("landing_page_url") or ""
+                    m = _re.search(r"arxiv\.org/abs/(\d{4}\.\d{4,5})", landing)
+                    if m:
+                        return f"https://arxiv.org/pdf/{m.group(1)}", title
+
+            return None, title
+        return None, ""
+
+    # 其他格式的 ID（DOI 等）→ 尝试用 OpenAlex 搜索
+    logger.warning(f"未知 paper_id 格式: {paper_id}，无法获取 PDF URL")
     return None, ""
 
 
@@ -85,16 +169,151 @@ def _parse_sections(md_text: str) -> list[dict]:
     return sections
 
 
-def download_paper(paper_id: str, title: str = "") -> str:
-    """下载论文 PDF 并用 MinerU 解析为 Markdown。
+def _parse_pdf_zhipu(pdf_path: str) -> str | None:
+    """用智谱异步文档解析 API（expert 档）将 PDF 解析为 Markdown。
+
+    流程: 创建任务 → 轮询结果。expert 档支持图表和公式解析。
+
+    Returns:
+        解析后的文本，失败返回 None
+    """
+    import time as _time
+
+    api_key = os.environ.get("ZHIPU_API_KEY", "")
+    if not api_key:
+        logger.warning("ZHIPU_API_KEY 未设置，无法使用智谱解析")
+        return None
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    # 1. 创建解析任务
+    create_url = "https://open.bigmodel.cn/api/paas/v4/files/parser/create"
+    try:
+        with open(pdf_path, "rb") as f:
+            files = {"file": (os.path.basename(pdf_path), f, "application/pdf")}
+            data = {"tool_type": "expert", "file_type": "pdf"}
+            resp = requests.post(create_url, headers=headers, files=files, data=data, timeout=120)
+        resp.raise_for_status()
+        create_result = resp.json()
+    except Exception as e:
+        logger.warning(f"智谱解析创建任务失败: {e}")
+        return None
+
+    task_id = create_result.get("task_id") or create_result.get("id")
+    if not task_id:
+        logger.warning(f"智谱解析未返回 task_id: {create_result}")
+        return None
+
+    # 2. 轮询结果
+    result_url = f"https://open.bigmodel.cn/api/paas/v4/files/parser/result/{task_id}/text"
+    max_wait = 180  # 最多等 3 分钟
+    poll_interval = 3
+    waited = 0
+
+    while waited < max_wait:
+        _time.sleep(poll_interval)
+        waited += poll_interval
+        try:
+            resp = requests.get(result_url, headers=headers, timeout=30)
+            if resp.status_code == 200:
+                result = resp.json()
+                status = result.get("status", "")
+                if status == "succeeded" or status == "success":
+                    content = result.get("content", "")
+                    if content:
+                        return content
+                    # 可能内容在其他字段
+                    data = result.get("data")
+                    if isinstance(data, str) and data:
+                        return data
+                    if isinstance(data, dict) and data.get("content"):
+                        return data["content"]
+                    logger.warning(f"智谱解析成功但无内容: {list(result.keys())}")
+                    return None
+                elif status in ("failed", "error"):
+                    logger.warning(f"智谱解析任务失败: {result.get('message', '')}")
+                    return None
+                # processing / pending → 继续等
+            elif resp.status_code == 404:
+                pass  # 任务还没准备好
+            else:
+                logger.warning(f"智谱轮询异常 HTTP {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"智谱轮询异常: {e}")
+
+    logger.warning(f"智谱解析超时（等待 {max_wait}s），task_id={task_id}")
+    return None
+
+
+def _parse_pdf_mineru(pdf_path: str, output_dir: str) -> str | None:
+    """用 MinerU 将 PDF 解析为 Markdown（fallback）。
+
+    Returns:
+        md 文件路径，失败返回 None
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    try:
+        result = subprocess.run(
+            ["mineru", "-p", pdf_path, "-o", output_dir,
+             "-b", "pipeline", "-m", "txt", "-d", "mps"],
+            capture_output=True, text=True, timeout=600,
+        )
+        if result.returncode != 0:
+            logger.warning(f"MinerU 解析失败: {result.stderr[:500]}")
+            return None
+    except FileNotFoundError:
+        logger.warning("MinerU 未安装")
+        return None
+    except subprocess.TimeoutExpired:
+        logger.warning("MinerU 解析超时（>10分钟）")
+        return None
+
+    return _find_md_file(output_dir)
+
+
+def _parse_pdf(pdf_path: str, paper_id: str, md_dir: str = "") -> tuple[str | None, str]:
+    """解析 PDF 为 Markdown，返回 (md_path, backend_used)。
+
+    产出文件直接放在 parsed/ 目录下（无子目录），文件名为 {safe_id}.md。
+    优先用智谱 API，失败则 fallback 到 MinerU。
+    """
+    if not md_dir:
+        md_dir = _get_paths()["md_dir"]
+    safe_id = paper_id.replace("/", "_").replace(":", "_")
+    md_path = os.path.join(md_dir, f"{safe_id}.md")
+
+    if PARSE_BACKEND == "zhipu":
+        md_text = _parse_pdf_zhipu(pdf_path)
+        if md_text:
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write(md_text)
+            return md_path, "zhipu"
+        # fallback
+        logger.info("智谱解析失败，fallback 到 MinerU")
+
+    # MinerU 需要输出目录
+    mineru_output_dir = os.path.join(md_dir, f"_mineru_{safe_id}")
+    mineru_md = _parse_pdf_mineru(pdf_path, mineru_output_dir)
+    if mineru_md:
+        # 将 MinerU 输出的 md 复制到扁平路径
+        import shutil
+        shutil.copy2(mineru_md, md_path)
+        return md_path, "mineru"
+    return None, ""
+
+
+def download_paper(paper_id: str, title: str = "", base_dir: str = "") -> str:
+    """下载论文 PDF 并解析为 Markdown（智谱API优先，MinerU fallback）。
 
     Args:
-        paper_id: Semantic Scholar 论文 ID
+        paper_id: 论文 ID（支持 OpenAlex W* / arXiv ID）
         title: 论文标题（可选，用于索引记录）
+        base_dir: 论文存储根目录（默认 knowledge/papers）
     Returns:
         下载和解析结果的描述
     """
-    index = _load_index()
+    paths = _get_paths(base_dir)
+    index = _load_index(paths["index_path"])
 
     if paper_id in index and index[paper_id].get("md_path"):
         md_path = index[paper_id]["md_path"]
@@ -109,7 +328,7 @@ def download_paper(paper_id: str, title: str = "") -> str:
         return f"论文 {paper_id} 没有 Open Access PDF 可下载"
 
     # 2. 下载 PDF
-    pdf_path = os.path.join(PDF_DIR, f"{paper_id}.pdf")
+    pdf_path = os.path.join(paths["pdf_dir"], f"{paper_id}.pdf")
     try:
         resp = requests.get(pdf_url, timeout=120, stream=True)
         resp.raise_for_status()
@@ -119,53 +338,39 @@ def download_paper(paper_id: str, title: str = "") -> str:
     except Exception as e:
         return f"PDF 下载失败: {e}"
 
-    # 3. 调用 MinerU 解析
-    output_dir = os.path.join(MD_DIR, paper_id)
-    os.makedirs(output_dir, exist_ok=True)
-    try:
-        result = subprocess.run(
-            ["mineru", "-p", pdf_path, "-o", output_dir],
-            capture_output=True, text=True, timeout=300,
-        )
-        if result.returncode != 0:
-            return f"MinerU 解析失败: {result.stderr[:500]}"
-    except FileNotFoundError:
-        return "MinerU 未安装。请运行: conda activate agent && uv pip install -U 'mineru[all]'"
-    except subprocess.TimeoutExpired:
-        return "MinerU 解析超时（>5分钟）"
-
-    # 4. 找到输出的 md 文件
-    md_path = _find_md_file(output_dir)
+    # 3. 解析 PDF → Markdown
+    md_path, backend = _parse_pdf(pdf_path, paper_id, md_dir=paths["md_dir"])
     if not md_path:
-        return f"MinerU 解析完成但未找到 .md 文件，输出目录: {output_dir}"
+        return f"PDF 解析失败（智谱API和MinerU均失败），PDF已保存: {pdf_path}"
 
-    # 5. 更新索引
+    # 4. 更新索引（线程安全）
     sections = _parse_sections(open(md_path, "r").read())
     section_titles = [s["title"] for s in sections if s["title"] != "preamble"]
 
-    index[paper_id] = {
+    _update_index(paper_id, {
         "title": title or paper_id,
         "pdf_path": pdf_path,
         "md_path": md_path,
         "sections": section_titles,
-    }
-    _save_index(index)
+    }, index_path=paths["index_path"])
 
     return f"论文下载并解析成功!\n- PDF: {pdf_path}\n- Markdown: {md_path}\n- 章节数: {len(section_titles)}\n- 章节: {', '.join(section_titles[:10])}"
 
 
-def read_paper_section(paper_id: str, section: str = "") -> str:
+def read_paper_section(paper_id: str, section: str = "", base_dir: str = "") -> str:
     """按需阅读论文的指定部分。
 
     Args:
-        paper_id: Semantic Scholar 论文 ID
+        paper_id: 论文 ID（支持 OpenAlex W* / arXiv ID）
         section: 章节名（如 abstract, introduction, method）或关键词。为空则返回结构概览。
+        base_dir: 论文存储根目录（默认 knowledge/papers）
     Returns:
         论文指定部分的内容
     """
     MAX_CHARS = 3000
 
-    index = _load_index()
+    paths = _get_paths(base_dir)
+    index = _load_index(paths["index_path"])
     entry = index.get(paper_id)
     if not entry or not entry.get("md_path"):
         return f"论文 {paper_id} 尚未下载解析，请先调用 download_paper"
@@ -259,13 +464,16 @@ def read_paper_section(paper_id: str, section: str = "") -> str:
     return f"未找到与 '{section}' 匹配的章节或关键词"
 
 
-def list_papers() -> str:
+def list_papers(base_dir: str = "") -> str:
     """列出所有已下载的论文。
 
+    Args:
+        base_dir: 论文存储根目录（默认 knowledge/papers）
     Returns:
         论文列表（paper_id, title, 是否有 md）
     """
-    index = _load_index()
+    paths = _get_paths(base_dir)
+    index = _load_index(paths["index_path"])
     if not index:
         return "尚无已下载的论文"
 
@@ -277,40 +485,6 @@ def list_papers() -> str:
         lines.append(f"- [{pid}] {title} (Markdown: {has_md}, 章节数: {n_sections})")
     return "\n".join(lines)
 
-
-# Tool schemas for MiniMax function calling
-DOWNLOAD_PAPER_SCHEMA = {
-    "description": "下载论文 PDF 并用 MinerU 解析为 Markdown，支持后续按章节阅读",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "paper_id": {"type": "string", "description": "Semantic Scholar 论文 ID"},
-            "title": {"type": "string", "description": "论文标题（可选，用于索引）", "default": ""},
-        },
-        "required": ["paper_id"],
-    },
-}
-
-READ_PAPER_SECTION_SCHEMA = {
-    "description": "按需阅读论文的指定章节（如 method, experiment）或按关键词搜索论文内容。为空则返回结构概览。",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "paper_id": {"type": "string", "description": "Semantic Scholar 论文 ID"},
-            "section": {"type": "string", "description": "章节名（abstract/introduction/method/experiment/conclusion）或搜索关键词，为空返回概览", "default": ""},
-        },
-        "required": ["paper_id"],
-    },
-}
-
-LIST_PAPERS_SCHEMA = {
-    "description": "列出所有已下载并解析的论文",
-    "parameters": {
-        "type": "object",
-        "properties": {},
-        "required": [],
-    },
-}
 
 
 def extract_paper_ids_from_summaries(summaries_dir: str = None, topic_id: str = None) -> list:
@@ -324,7 +498,7 @@ def extract_paper_ids_from_summaries(summaries_dir: str = None, topic_id: str = 
         [{"file": "paper_timegrad.md", "paper_id": "arXiv:2107.03502", "title": "TimeGrad..."}]
     """
     if summaries_dir is None:
-        summaries_dir = SUMMARIES_DIR
+        summaries_dir = _get_paths()["summaries_dir"]
 
     if not os.path.exists(summaries_dir):
         return []
@@ -409,14 +583,16 @@ def batch_download_papers(paper_ids: list) -> dict:
     return results
 
 
-def update_global_index(paper_ids: list, topic_id: str):
+def update_global_index(paper_ids: list, topic_id: str, base_dir: str = ""):
     """更新全局论文索引 index.yaml，按 paper_id 去重，标记引用的 topic。
 
     Args:
         paper_ids: extract_paper_ids_from_summaries 的返回值
         topic_id: 当前 topic ID
+        base_dir: 论文存储根目录（默认 knowledge/papers）
     """
-    index = _load_index()
+    paths = _get_paths(base_dir)
+    index = _load_index(paths["index_path"])
 
     for item in paper_ids:
         pid = item["paper_id"]
@@ -431,23 +607,25 @@ def update_global_index(paper_ids: list, topic_id: str):
             index[pid] = {
                 "title": item.get("title", pid),
                 "topics": [topic_id] if topic_id else [],
-                "summary_path": os.path.join(SUMMARIES_DIR, item["file"]),
+                "summary_path": os.path.join(paths["summaries_dir"], item["file"]),
             }
 
-    _save_index(index)
+    _save_index(index, paths["index_path"])
 
 
-def search_paper_index(query: str, topic_id: str = None) -> str:
+def search_paper_index(query: str, topic_id: str = None, base_dir: str = "") -> str:
     """按标题/关键词搜索全局论文索引。
 
     Args:
         query: 搜索关键词
         topic_id: 可选，只搜索指定 topic 引用的论文
+        base_dir: 论文存储根目录（默认 knowledge/papers）
 
     Returns:
         匹配的论文列表描述
     """
-    index = _load_index()
+    paths = _get_paths(base_dir)
+    index = _load_index(paths["index_path"])
     if not index:
         return "全局论文索引为空"
 
@@ -478,18 +656,6 @@ def search_paper_index(query: str, topic_id: str = None) -> str:
     return f"找到 {len(matches)} 篇匹配论文:\n" + "\n".join(matches)
 
 
-SEARCH_PAPER_INDEX_SCHEMA = {
-    "description": "搜索全局论文索引，查找已有的论文总结避免重复调研",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string", "description": "搜索关键词（标题或 paper ID）"},
-            "topic_id": {"type": "string", "description": "可选，只搜索指定 topic 引用的论文", "default": ""},
-        },
-        "required": ["query"],
-    },
-}
-
 
 def title_to_slug(title: str) -> str:
     """将论文标题转为文件名安全的 slug。
@@ -506,20 +672,23 @@ def title_to_slug(title: str) -> str:
     return slug
 
 
-def download_paper_by_arxiv(arxiv_id: str, paper_id: str = "", title: str = "") -> str:
+def download_paper_by_arxiv(arxiv_id: str, paper_id: str = "", title: str = "",
+                            base_dir: str = "") -> str:
     """通过 arXiv ID 直接下载 PDF 并用 MinerU 解析。
 
     Args:
         arxiv_id: arXiv ID（如 "2106.13008"）
-        paper_id: Semantic Scholar paper ID（用于索引标识，默认用 arxiv_id）
+        paper_id: 论文 ID（用于索引标识，默认用 arxiv_id）
         title: 论文标题
+        base_dir: 论文存储根目录（默认 knowledge/papers）
     Returns:
         下载和解析结果描述
     """
+    paths = _get_paths(base_dir)
     if not paper_id:
         paper_id = f"arXiv:{arxiv_id}"
 
-    index = _load_index()
+    index = _load_index(paths["index_path"])
 
     # 检查是否已下载
     if paper_id in index and index[paper_id].get("md_path"):
@@ -531,7 +700,7 @@ def download_paper_by_arxiv(arxiv_id: str, paper_id: str = "", title: str = "") 
     pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
 
     # 下载 PDF
-    pdf_path = os.path.join(PDF_DIR, f"{paper_id.replace('/', '_').replace(':', '_')}.pdf")
+    pdf_path = os.path.join(paths["pdf_dir"], f"{paper_id.replace('/', '_').replace(':', '_')}.pdf")
     try:
         resp = requests.get(pdf_url, timeout=120, stream=True)
         resp.raise_for_status()
@@ -541,37 +710,20 @@ def download_paper_by_arxiv(arxiv_id: str, paper_id: str = "", title: str = "") 
     except Exception as e:
         return f"arXiv PDF 下载失败 ({arxiv_id}): {e}"
 
-    # MinerU 解析
-    safe_id = paper_id.replace("/", "_").replace(":", "_")
-    output_dir = os.path.join(MD_DIR, safe_id)
-    os.makedirs(output_dir, exist_ok=True)
-    try:
-        result = subprocess.run(
-            ["mineru", "-p", pdf_path, "-o", output_dir],
-            capture_output=True, text=True, timeout=300,
-        )
-        if result.returncode != 0:
-            return f"MinerU 解析失败: {result.stderr[:500]}"
-    except FileNotFoundError:
-        return "MinerU 未安装。请运行: conda activate agent && uv pip install -U 'mineru[all]'"
-    except subprocess.TimeoutExpired:
-        return "MinerU 解析超时（>5分钟）"
-
-    # 找 md 文件
-    md_path = _find_md_file(output_dir)
+    # 解析 PDF → Markdown
+    md_path, backend = _parse_pdf(pdf_path, paper_id, md_dir=paths["md_dir"])
     if not md_path:
-        return f"MinerU 解析完成但未找到 .md 文件，输出目录: {output_dir}"
+        return f"PDF 解析失败（智谱API和MinerU均失败），PDF已保存: {pdf_path}"
 
-    # 更新索引
+    # 更新索引（线程安全）
     sections = _parse_sections(open(md_path, "r").read())
     section_titles = [s["title"] for s in sections if s["title"] != "preamble"]
 
-    index[paper_id] = {
+    _update_index(paper_id, {
         "title": title or paper_id,
         "pdf_path": pdf_path,
         "md_path": md_path,
         "sections": section_titles,
-    }
-    _save_index(index)
+    }, index_path=paths["index_path"])
 
     return f"论文下载并解析成功!\n- PDF: {pdf_path}\n- Markdown: {md_path}\n- 章节数: {len(section_titles)}"

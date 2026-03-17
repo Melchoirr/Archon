@@ -1,9 +1,12 @@
 """Shell 命令执行工具"""
+import os
 import subprocess
 
 
-def run_command(command: str, timeout: int = 300) -> str:
+def run_command(command: str, timeout: int = 300, venv_path: str = "") -> str:
     """执行 shell 命令并返回结果"""
+    if venv_path and os.path.exists(os.path.join(venv_path, "bin", "activate")):
+        command = f"source {venv_path}/bin/activate && {command}"
     try:
         result = subprocess.run(
             command,
@@ -21,16 +24,3 @@ def run_command(command: str, timeout: int = 300) -> str:
         return output
     except subprocess.TimeoutExpired:
         return f"Command timed out after {timeout}s"
-
-
-RUN_COMMAND_SCHEMA = {
-    "description": "执行 shell 命令并返回 stdout/stderr/returncode",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "command": {"type": "string", "description": "要执行的 shell 命令"},
-            "timeout": {"type": "integer", "description": "超时时间（秒）", "default": 300},
-        },
-        "required": ["command"],
-    },
-}

@@ -68,7 +68,8 @@ def claude_write_module(module_name: str, task: str, working_dir: str = "",
     prompt += """
 要求:
 1. 只关注当前模块的实现
-2. 代码完整可运行，包含必要的 import"""
+2. 代码完整可运行，包含必要的 import
+3. 遵循项目实验基础设施规范（YAML 配置、统一入口、标准输出目录）"""
 
     return _run_claude_p(prompt, cwd)
 
@@ -117,76 +118,3 @@ def claude_review(review_instruction: str, working_dir: str = "") -> str:
 
     return _run_claude_p(prompt, cwd, timeout=300)
 
-
-# ========== Tool Schemas ==========
-
-CLAUDE_WRITE_MODULE_SCHEMA = {
-    "description": "调用 claude -p 编写一个功能模块。Claude 会自动读取项目中的文件。每次只写一个模块。在 task 中描述清楚：功能、目标文件路径、输入输出、技术细节、需要参考哪些已有文件。",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "module_name": {
-                "type": "string",
-                "description": "模块名称（如 '数据加载器'、'模型定义'、'损失函数'、'训练循环'、'评估脚本'）",
-            },
-            "task": {
-                "type": "string",
-                "description": "详细的编码任务描述：功能、目标文件、输入输出、技术要求、需要参考的已有文件等",
-            },
-            "working_dir": {
-                "type": "string",
-                "description": "工作目录（相对于项目根目录），通常是 idea 目录如 'ideas/idea_001_xxx'",
-                "default": "",
-            },
-            "context_files": {
-                "type": "string",
-                "description": "参考文件内容（直接传入文件内容作为上下文，如 design.md 或已有模块的代码）",
-                "default": "",
-            },
-        },
-        "required": ["module_name", "task"],
-    },
-}
-
-CLAUDE_FIX_ERROR_SCHEMA = {
-    "description": "调用 claude -p 修复代码错误。将 run_command 得到的报错信息传入，Claude 会自动定位并修复。",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "error_info": {
-                "type": "string",
-                "description": "错误信息：traceback、测试失败输出、或具体的错误描述",
-            },
-            "fix_instruction": {
-                "type": "string",
-                "description": "额外的修复提示（可选）",
-                "default": "",
-            },
-            "working_dir": {
-                "type": "string",
-                "description": "工作目录",
-                "default": "",
-            },
-        },
-        "required": ["error_info"],
-    },
-}
-
-CLAUDE_REVIEW_SCHEMA = {
-    "description": "调用 claude -p 审查代码。Claude 会自动读取文件并检查。",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "review_instruction": {
-                "type": "string",
-                "description": "审查指令：审查哪个文件、重点关注什么（如 '审查 src/model.py，对照 design.md 检查模型结构是否一致'）",
-            },
-            "working_dir": {
-                "type": "string",
-                "description": "工作目录",
-                "default": "",
-            },
-        },
-        "required": ["review_instruction"],
-    },
-}

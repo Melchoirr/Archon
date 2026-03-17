@@ -73,6 +73,28 @@ def _parse_ref_list(ref_str: str) -> list:
     return [r.strip() for r in ref_str.split(",") if r.strip()]
 
 
+def _find_topic_dir_by_md(md_ref: str) -> str | None:
+    """根据 md 文件名查找已初始化的 topic 目录。
+
+    例如 mean_reversion.md → topics/T001_mean_reversion/
+    """
+    # 提取 md 文件的 stem 作为匹配关键词
+    basename = os.path.basename(md_ref)
+    stem = os.path.splitext(basename)[0].lower()
+    # 清理非 ASCII
+    stem_clean = re.sub(r'[^a-zA-Z0-9_-]', '_', stem)
+
+    topics_dir = "topics"
+    if not os.path.exists(topics_dir):
+        return None
+    for d in sorted(os.listdir(topics_dir)):
+        if d.startswith("T") and os.path.isdir(os.path.join(topics_dir, d)):
+            # T001_mean_reversion 包含 mean_reversion
+            if stem_clean in d.lower():
+                return os.path.join(topics_dir, d)
+    return None
+
+
 def _find_topic_dir(topic_id: str = None) -> str:
     """查找 topic 目录"""
     topics_dir = "topics"
@@ -145,7 +167,9 @@ def cmd_init(args):
       1. 在 topics/ 下创建 md 文件（参考 topics/mean_reversion.md 模板）
       2. python run_research.py init --topic mean_reversion.md
     """
-    from tools.research_tree import next_topic_id, _save_tree
+    from tools.research_tree import ResearchTreeService
+    from shared.paths import PathManager
+    from shared.models.research_tree import ResearchTree, ResearchRoot, ElaborateState, SurveyState
 
     print("Initializing project...")
 
@@ -205,7 +229,10 @@ def cmd_init(args):
     print(f"  关键词: {topic_info['keywords']}")
 
     # 分配 topic 编号
-    topic_id = next_topic_id()
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    _pm = PathManager(project_root)
+    _ts = ResearchTreeService(_pm)
+    topic_id = _ts.next_topic_id()
     brief = _make_topic_brief(topic_info["title"], md_path)
     topic_dir = os.path.join("topics", f"{topic_id}_{brief}")
     os.makedirs(topic_dir, exist_ok=True)
@@ -241,12 +268,12 @@ def cmd_init(args):
             "base_url": "https://api.minimaxi.com/anthropic",
             "default_model": "MiniMax-M2.5",
             "fast_model": "MiniMax-M2.1-highspeed",
-            "max_tokens": 4096,
+            "max_tokens": 8192,
         },
         "environment": {"conda_env": "agent", "python": "3.10"},
         "datasets": {},
         "search": {
-            "semantic_scholar_api": "https://api.semanticscholar.org/graph/v1",
+            "openalex_api": "https://api.openalex.org",
             "web_search_engine": "duckduckgo",
         },
     }
@@ -255,20 +282,16 @@ def cmd_init(args):
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
-    # 创建 research_tree.yaml
-    tree = {
-        "root": {
-            "topic_id": topic_id,
-            "topic_brief": brief,
-            "topic": topic_info["title"],
-            "description": topic_info["description"],
-            "status": "initialized",
-            "ideas": [],
-            "elaborate": {"status": "pending"},
-            "survey": {"rounds": 0, "current_round": 0, "status": "pending"},
-        }
-    }
-    _save_tree(tree, topic_dir)
+    # 创建 research_tree.yaml（通过 Pydantic 模型）
+    tree = ResearchTree(root=ResearchRoot(
+        topic_id=topic_id,
+        topic_brief=brief,
+        topic=topic_info["title"],
+        description=topic_info["description"],
+    ))
+    topic_paths = PathManager(project_root, topic_dir)
+    topic_ts = ResearchTreeService(topic_paths)
+    topic_ts.save(tree)
 
     print(f"\n  Topic ID: {topic_id}")
     print(f"  目录: {topic_dir}/")
@@ -396,13 +419,47 @@ def cmd_ideation(args):
 
 
 def cmd_refine(args):
-    """Idea 细化"""
+    """Idea 细化（支持并行：--idea T001 会并行 refine 所有 idea）"""
     topic_id, idea_id = _parse_idea_ref(args.idea)
     orch = _get_orchestrator(args, topic_id_override=topic_id)
     ref_ideas = _parse_ref_list(args.ref_ideas)
     ref_topics = _parse_ref_list(args.ref_topics)
-    result = orch.phase_refine(idea_id, ref_ideas=ref_ideas, ref_topics=ref_topics)
-    print(f"\nRefine 结果摘要:\n{result[:500]}")
+
+    if idea_id:
+        # 单个 idea
+        result = orch.phase_refine(idea_id, ref_ideas=ref_ideas, ref_topics=ref_topics)
+        print(f"\nRefine 结果摘要:\n{result[:500]}")
+    else:
+        # 并行 refine 所有 idea
+        idea_ids = orch._list_idea_ids()
+        if not idea_ids:
+            print("未找到任何 idea 目录")
+            return
+        print(f"\n并行 refine {len(idea_ids)} 个 idea: {', '.join(idea_ids)}")
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        max_workers = min(len(idea_ids), getattr(args, 'parallel', 3) or 3)
+
+        def _refine_one(iid):
+            # 每个线程创建独立的 orchestrator 避免竞争
+            o = _get_orchestrator(args, topic_id_override=topic_id)
+            return o.phase_refine(iid, ref_ideas=ref_ideas, ref_topics=ref_topics)
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_refine_one, iid): iid for iid in idea_ids}
+            for future in as_completed(futures):
+                iid = futures[future]
+                try:
+                    results[iid] = future.result()
+                except Exception as e:
+                    results[iid] = f"Error: {e}"
+                    print(f"\n{iid} refine 失败: {e}")
+        print(f"\n{'='*60}")
+        print(f"并行 Refine 完成! 共 {len(results)} 个 idea")
+        for iid in sorted(results.keys()):
+            status = "成功" if not results[iid].startswith("Error") else "失败"
+            print(f"  {iid}: {status}")
+        print(f"{'='*60}")
 
 
 def cmd_code_ref(args):
@@ -478,6 +535,22 @@ def cmd_memory(args):
     print(result)
 
 
+def cmd_theory_check(args):
+    """理论检查"""
+    topic_id, idea_id = _parse_idea_ref(args.idea)
+    orch = _get_orchestrator(args, topic_id_override=topic_id)
+    result = orch.phase_theory_check(idea_id)
+    print(f"\nTheory Check 结果摘要:\n{result[:500]}")
+
+
+def cmd_debug(args):
+    """代码调试"""
+    topic_id, idea_id = _parse_idea_ref(args.idea)
+    orch = _get_orchestrator(args, topic_id_override=topic_id)
+    result = orch.phase_debug(idea_id)
+    print(f"\nDebug 结果摘要:\n{result[:500]}")
+
+
 def cmd_auto(args):
     """自动运行模式"""
     topic_id, idea_id = _parse_idea_ref(args.idea)
@@ -487,6 +560,95 @@ def cmd_auto(args):
     result = orch.phase_auto(idea_id, start_phase=start,
                               ref_ideas=ref_ideas, max_iter=args.max_iter)
     print(f"\nAuto 结果摘要:\n{result[:500]}")
+
+
+def _get_fsm(args, topic_id: str = None):
+    """获取 FSM 实例"""
+    from agents.fsm_engine import ResearchFSM
+    from shared.paths import PathManager
+    from tools.research_tree import ResearchTreeService
+
+    tid = topic_id or getattr(args, "topic", None)
+    topic_dir = _find_topic_dir(tid) if tid else _find_topic_dir()
+    if not topic_dir:
+        print("ERROR: 未找到 topic 目录")
+        sys.exit(1)
+
+    config_path = os.path.join(topic_dir, "config.yaml")
+    if not os.path.exists(config_path):
+        config_path = "config.yaml"
+
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    paths = PathManager(project_root, topic_dir)
+    tree_service = ResearchTreeService(paths)
+    return ResearchFSM(paths, tree_service, config_path)
+
+
+def cmd_fsm(args):
+    """FSM 模式运行"""
+    subcmd = args.fsm_command
+
+    if subcmd == "status":
+        fsm = _get_fsm(args)
+        print(fsm.status())
+        return
+
+    if subcmd == "history":
+        fsm = _get_fsm(args)
+        idea_id = getattr(args, "idea", None)
+        if idea_id and "-I" in idea_id:
+            _, idea_id = _parse_idea_ref(idea_id)
+        records = fsm.history(idea_id)
+        if not records:
+            print("无转换历史")
+            return
+        for r in records[-20:]:  # 最近 20 条
+            idea_str = f" [{r.idea_id}]" if r.idea_id else ""
+            print(f"  {r.timestamp[:19]}{idea_str} "
+                  f"{r.from_state} → {r.to_state} ({r.trigger})")
+        return
+
+    if subcmd == "run":
+        idea_ref = getattr(args, "idea", None)
+        topic_ref = getattr(args, "topic", None)
+        from_state = getattr(args, "from_state", None)
+        force_state = getattr(args, "force", None)
+
+        # 如果 --topic 指向 .md 文件，自动执行 init
+        if topic_ref and topic_ref.endswith(".md"):
+            topic_dir = _find_topic_dir_by_md(topic_ref)
+            if not topic_dir:
+                print(f"从 {topic_ref} 初始化项目...")
+                # 复用 cmd_init 逻辑
+                init_ns = argparse.Namespace(topic=topic_ref)
+                cmd_init(init_ns)
+                # init 后重新查找
+                topic_dir = _find_topic_dir_by_md(topic_ref)
+                if not topic_dir:
+                    print("ERROR: init 后仍未找到 topic 目录")
+                    return
+            # 把 topic_ref 替换为 topic_id
+            topic_id_match = re.match(r"(T\d+)", os.path.basename(topic_dir))
+            if topic_id_match:
+                args.topic = topic_id_match.group(1)
+
+        if idea_ref:
+            topic_id, idea_id = _parse_idea_ref(idea_ref)
+            fsm = _get_fsm(args, topic_id)
+
+            if force_state:
+                fsm.force_transition(idea_id, force_state,
+                                     feedback=getattr(args, "feedback", ""))
+                print(f"强制跳转到 {force_state}")
+                return
+
+            result = fsm.run_idea(idea_id, start_state=from_state)
+            print(f"\nFSM 运行完成:\n{result}")
+        else:
+            fsm = _get_fsm(args)
+            result = fsm.run_topic(start_state=from_state)
+            print(f"\nFSM 运行完成:\n{result}")
+        return
 
 
 def main():
@@ -519,9 +681,10 @@ def main():
 
     # refine
     refine_p = subparsers.add_parser("refine", help="Refine idea with theory and experiment design")
-    refine_p.add_argument("--idea", type=str, required=True, help="Idea ID (e.g. T001-I001)")
+    refine_p.add_argument("--idea", type=str, required=True, help="Idea ID (e.g. T001-I001) or topic ID (e.g. T001) for parallel refine")
     refine_p.add_argument("--ref-ideas", type=str, default=None, help="Reference ideas (comma-separated)")
     refine_p.add_argument("--ref-topics", type=str, default=None, help="Reference topics (comma-separated)")
+    refine_p.add_argument("--parallel", type=int, default=3, help="Max parallel workers (default: 3)")
     refine_p.add_argument("--topic", type=str, default=None, help="Topic ID")
 
     # code-ref
@@ -567,6 +730,16 @@ def main():
     mem_p.add_argument("--idea", type=str, default=None, help="Idea ID filter")
     mem_p.add_argument("--topic-id", type=str, default=None, help="Topic ID filter")
 
+    # theory-check
+    tc_p = subparsers.add_parser("theory-check", help="Theory cross-validation")
+    tc_p.add_argument("--idea", type=str, required=True, help="Idea ID (e.g. T001-I001)")
+    tc_p.add_argument("--topic", type=str, default=None, help="Topic ID")
+
+    # debug
+    debug_p = subparsers.add_parser("debug", help="Run tests and fix bugs")
+    debug_p.add_argument("--idea", type=str, required=True, help="Idea ID (e.g. T001-I001)")
+    debug_p.add_argument("--topic", type=str, default=None, help="Topic ID")
+
     # auto
     auto_p = subparsers.add_parser("auto", help="Auto-run pipeline for an idea")
     auto_p.add_argument("--idea", type=str, required=True, help="Idea ID (e.g. T001-I001)")
@@ -575,6 +748,27 @@ def main():
     auto_p.add_argument("--ref-ideas", type=str, default=None, help="Reference ideas")
     auto_p.add_argument("--max-iter", type=int, default=3, help="Max experiment iterations")
     auto_p.add_argument("--topic", type=str, default=None, help="Topic ID")
+
+    # fsm
+    fsm_p = subparsers.add_parser("fsm", help="FSM-driven research workflow")
+    fsm_sub = fsm_p.add_subparsers(dest="fsm_command")
+
+    fsm_run_p = fsm_sub.add_parser("run", help="Run FSM for topic or idea")
+    fsm_run_p.add_argument("--topic", type=str, default=None, help="Topic ID (e.g. T001)")
+    fsm_run_p.add_argument("--idea", type=str, default=None, help="Idea ID (e.g. T001-I001)")
+    fsm_run_p.add_argument("--from", type=str, default=None, dest="from_state",
+                           help="Start from specific state")
+    fsm_run_p.add_argument("--force", type=str, default=None,
+                           help="Force transition to state")
+    fsm_run_p.add_argument("--feedback", type=str, default="",
+                           help="Feedback for forced transition")
+
+    fsm_status_p = fsm_sub.add_parser("status", help="Show FSM status")
+    fsm_status_p.add_argument("--topic", type=str, default=None, help="Topic ID")
+
+    fsm_history_p = fsm_sub.add_parser("history", help="Show transition history")
+    fsm_history_p.add_argument("--idea", type=str, default=None, help="Idea ID filter")
+    fsm_history_p.add_argument("--topic", type=str, default=None, help="Topic ID")
 
     args = parser.parse_args()
 
@@ -590,12 +784,15 @@ def main():
         "refine": cmd_refine,
         "code-ref": cmd_code_ref,
         "code": cmd_code,
+        "theory-check": cmd_theory_check,
+        "debug": cmd_debug,
         "experiment": cmd_experiment,
         "analyze": cmd_analyze,
         "conclude": cmd_conclude,
         "status": cmd_status,
         "memory": cmd_memory,
         "auto": cmd_auto,
+        "fsm": cmd_fsm,
     }
     commands[args.command](args)
 

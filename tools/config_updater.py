@@ -23,22 +23,3 @@ def update_config_section(section: str, data: str, config_path: str = "config.ya
         yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
     return f"Updated config.yaml section '{section}' successfully."
-
-
-UPDATE_CONFIG_SECTION_SCHEMA = {
-    "description": "更新 config.yaml 的指定 section（如 datasets, metrics, experiment）。data 参数为 YAML 格式字符串。",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "section": {
-                "type": "string",
-                "description": "要更新的顶层 key，如 datasets, metrics, experiment",
-            },
-            "data": {
-                "type": "string",
-                "description": "YAML 格式字符串，解析后写入该 section",
-            },
-        },
-        "required": ["section", "data"],
-    },
-}
