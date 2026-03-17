@@ -260,7 +260,6 @@ def cmd_init(args):
         },
         "project": {
             "name": brief,
-            "author": "zhaodawei",
         },
         "llm": {
             "provider": "minimax",

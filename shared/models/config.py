@@ -22,7 +22,6 @@ class LLMSection(BaseModel):
 
 class ProjectSection(BaseModel):
     name: str = ""
-    author: str = ""
 
 
 class EnvironmentSection(BaseModel):
