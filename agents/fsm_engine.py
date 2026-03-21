@@ -26,11 +26,11 @@ logger = logging.getLogger(__name__)
 
 # 最大重试次数
 MAX_RETRIES = {
-    "refine": 3,
-    "theory_check": 2,
-    "debug": 5,
-    "experiment": 5,  # tune loop
-    "survey": 3,      # deep survey rounds
+    "refine": 4,
+    "theory_check": 3,
+    "debug": 6,
+    "experiment": 6,  # tune loop
+    "survey": 4,      # deep survey rounds
 }
 
 # Topic 级线性转换表
@@ -125,6 +125,11 @@ class ResearchFSM:
             if self._needs_user_confirm(state, next_state):
                 next_state = self._prompt_user_topic(state, next_state, decision)
 
+            # 用户选择退出：保留当前状态，不记录转换
+            if next_state == "_quit":
+                print(f"\n[FSM] 用户退出，当前状态保留为 {state}")
+                break
+
             # 记录转换
             self._record_transition(state, next_state, "auto:linear",
                                      decision_snapshot=decision if isinstance(decision, dict) else None)
@@ -181,19 +186,19 @@ class ResearchFSM:
                     state, next_state, decision, idea_id, idea_fsm)
                 next_state = final
 
+            # 用户选择退出：保留当前状态，不记录转换
+            if next_state == "_quit":
+                print(f"\n[FSM] 用户退出，{idea_id} 状态保留为 {state}")
+                break
+
             # 记录
             trigger = f"eval:{decision.get('verdict', 'auto')}" if isinstance(decision, dict) and "verdict" in decision else "auto:linear"
             self._record_transition(state, next_state, trigger,
                                      idea_id=idea_id,
                                      decision_snapshot=decision if isinstance(decision, dict) else None)
 
-            # 更新 retry count
-            retry_key = next_state
-            if next_state == state:
-                idea_fsm.retry_counts[retry_key] = idea_fsm.retry_counts.get(retry_key, 0) + 1
-            elif next_state != state:
-                # 进入新状态时不重置（保留历史回退次数）
-                pass
+            # 更新 retry count（无条件递增，防止跨状态回退死循环）
+            idea_fsm.retry_counts[next_state] = idea_fsm.retry_counts.get(next_state, 0) + 1
 
             # 传递 feedback
             if isinstance(decision, dict):
@@ -238,12 +243,23 @@ class ResearchFSM:
             if self._needs_user_confirm(state, next_state):
                 next_state = self._prompt_user_idea(state, next_state, decision, idea_id, idea_fsm)
 
+            if next_state == "_quit":
+                print(f"\n[FSM] 用户退出，{idea_id} 状态保留为 {state}")
+                return None
+
             trigger = f"eval:{decision.get('verdict', 'auto')}" if isinstance(decision, dict) and "verdict" in decision else "auto:linear"
             record = self._record_transition(state, next_state, trigger, idea_id=idea_id,
                                               decision_snapshot=decision if isinstance(decision, dict) else None)
 
+            # 更新 retry count（与 run_idea 保持一致）
+            idea_fsm.retry_counts[next_state] = idea_fsm.retry_counts.get(next_state, 0) + 1
+
+            # 传递 feedback（与 run_idea 保持一致）
             if isinstance(decision, dict):
-                idea_fsm.feedback = decision.get("next_action_detail", "")
+                idea_fsm.feedback = decision.get("next_action_detail", "") or \
+                                    "; ".join(decision.get("revision_suggestions", []))
+            else:
+                idea_fsm.feedback = ""
             idea_fsm.current_state = next_state
             if state == "analyze" and next_state == "experiment":
                 idea_fsm.version += 1
@@ -319,8 +335,11 @@ class ResearchFSM:
         if state == "elaborate":
             return orch.phase_elaborate()
         elif state in ("survey", "deep_survey"):
-            round_num = self.snapshot.transition_history[-1].decision_snapshot.get("round", 1) \
-                if self.snapshot.transition_history else 1
+            # 计算这是第几轮 survey（从 transition_history 中统计）
+            round_num = sum(
+                1 for r in self.snapshot.transition_history
+                if r.from_state in ("survey", "deep_survey")
+            ) + 1
             return orch.phase_survey(round_num=round_num)
         elif state == "ideation":
             return orch.phase_ideation()
@@ -689,10 +708,10 @@ class ResearchFSM:
         try:
             choice = input("\n  Enter 接受推荐，或输入选项: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
-            print("\n  [FSM] stdin 不可用，自动接受推荐")
-            return to_state
+            print("\n  [FSM] 中断，保留当前状态")
+            return "_quit"
         if choice == "q":
-            return "completed"
+            return "_quit"
         elif choice == "s":
             return "survey"
         elif choice == "i":
@@ -747,8 +766,8 @@ class ResearchFSM:
         try:
             choice = input("\n  Enter 接受推荐，或输入选项: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
-            print("\n  [FSM] stdin 不可用，自动接受推荐")
-            return to_state
+            print("\n  [FSM] 中断，保留当前状态")
+            return "_quit"
 
         mapping = {
             "e": "experiment",
@@ -756,7 +775,7 @@ class ResearchFSM:
             "d": "deep_survey",
             "a": "abandoned",
             "c": "conclude",
-            "q": "abandoned",
+            "q": "_quit",
         }
         return mapping.get(choice, to_state)
 
