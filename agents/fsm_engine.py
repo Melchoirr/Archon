@@ -358,7 +358,7 @@ class ResearchFSM:
         )
 
         if state == "refine":
-            return orch.phase_refine(idea_id, feedback=idea_fsm.feedback)
+            return orch.phase_refine(idea_id)
         elif state == "theory_check":
             return self._run_theory_check(idea_id, idea_fsm)
         elif state == "code_reference":

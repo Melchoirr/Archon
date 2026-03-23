@@ -823,7 +823,7 @@ class ResearchOrchestrator:
         return result
 
     def phase_refine(self, idea_id: str, ref_ideas: list = None,
-                     ref_topics: list = None, feedback: str = "") -> str:
+                     ref_topics: list = None) -> str:
         """Idea 细化：理论推导 + 模块化结构 + 实验计划"""
         self._reload_config()
         self._log_phase_start("refine", idea_id)
@@ -847,6 +847,12 @@ class ResearchOrchestrator:
         refinement_dir = str(self.paths.idea_refinement_dir(idea_id))
         os.makedirs(refinement_dir, exist_ok=True)
 
+        # 检查是否存在上一轮理论审查
+        theory_review_path = ""
+        review_file = self.paths.idea_refinement_dir(idea_id) / "theory_review.md"
+        if review_file.exists():
+            theory_review_path = str(review_file)
+
         tc = self.topic_config
 
         prompt = agent.build_prompt(
@@ -859,7 +865,7 @@ class ResearchOrchestrator:
             context=context,
             past_exp=past_exp,
             refinement_dir=refinement_dir,
-            feedback=feedback,
+            theory_review_path=theory_review_path,
         )
 
         result = agent.run(prompt)
