@@ -823,7 +823,7 @@ class ResearchOrchestrator:
         return result
 
     def phase_refine(self, idea_id: str, ref_ideas: list = None,
-                     ref_topics: list = None) -> str:
+                     ref_topics: list = None, feedback: str = "") -> str:
         """Idea 细化：理论推导 + 模块化结构 + 实验计划"""
         self._reload_config()
         self._log_phase_start("refine", idea_id)
@@ -859,6 +859,7 @@ class ResearchOrchestrator:
             context=context,
             past_exp=past_exp,
             refinement_dir=refinement_dir,
+            feedback=feedback,
         )
 
         result = agent.run(prompt)

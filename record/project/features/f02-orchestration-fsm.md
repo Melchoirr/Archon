@@ -13,7 +13,8 @@
 - `agents/fsm_engine.py:105-148` — `run_topic()`，Topic 级 FSM 循环
 - `agents/fsm_engine.py:150-225` — `run_idea()`，Idea 级 FSM 循环
 - `agents/fsm_engine.py:227-284` — `step()`，单步状态转换
-- `agents/fsm_engine.py:438-567` — 评估路由（`_route_analysis`, `_route_theory_check`, `_route_debug`）
+- `agents/fsm_engine.py:438-580` — 评估路由（`_route_analysis`, `_route_theory_check`(含 derivative), `_route_debug`）
+- `agents/fsm_engine.py` — `_gather_other_ideas_summary()`，跨 idea 摘要收集
 
 ## 功能描述
 系统的中枢控制层，包含两个核心组件：
@@ -73,6 +74,11 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [修改] 2026-03-23 — FSM 路由增加 derivative verdict + 跨 idea 上下文 + refine feedback 传递
+- **目的**：支持 TheoryEvaluator 新增的 derivative 判定；为评估器提供同 batch 其他 idea 摘要；refine 回退时传递评估 feedback
+- **改动**：`fsm_engine.py` `_route_theory_check()` 增加 derivative 分支（→ refine 或 abandon）；`_gather_theory_eval_context()` 增加 other_ideas_summary；新增 `_gather_other_ideas_summary()` 方法；`_execute_idea_state("refine")` 传递 `feedback=idea_fsm.feedback`。`orchestrator.py` `phase_refine()` 签名增加 feedback 参数并传递给 RefinementAgent
+- **验证**：import 通过
+
 ### [修复] 2026-03-23 — phase_ideation 传入 topic_dir (`d081a7c`)
 - **目的**：确保 IdeationAgent 的 idea_graph 工具写入正确的 topic 目录
 - **改动**：orchestrator.py `phase_ideation()` 创建 IdeationAgent 时传入 `topic_dir=self.topic_dir`

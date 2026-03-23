@@ -8,7 +8,7 @@
 - `shared/path_guard.py:43-161` — `PathGuard`，写操作安全校验（正则检测重定向/tee/mkdir/wget/cp/mv/touch）
 - `shared/models/config.py:44-75` — `TopicConfig`，配置校验（含 TopicSection, LLMSection, ProjectSection, EnvironmentSection, MetricsSection）
 - `shared/models/research_tree.py:10-101` — 研究树模型（Score, IdeaPhases, Iteration, ExperimentStep, Relationship, Idea, ResearchRoot, ResearchTree）
-- `shared/models/fsm.py:10-128` — FSM 模型（FSMState, AnalysisVerdict, TheoryVerdict, DebugVerdict, SurveyVerdict, *Decision, TransitionRecord, IdeaFSMState, FSMSnapshot）
+- `shared/models/fsm.py:10-135` — FSM 模型（FSMState, AnalysisVerdict, TheoryVerdict(含 derivative), DebugVerdict, SurveyVerdict, *Decision, TransitionRecord, IdeaFSMState, FSMSnapshot）
 - `shared/models/paper.py:8-43` — 论文模型（Author, ExternalIds, Paper, PaperIndexEntry）
 - `shared/models/memory.py:10-19` — `ExperienceEntry`，经验日志条目
 - `shared/models/tool_params.py:12-325` — `ToolParamsBase` + 30+ 工具参数 Pydantic 模型
@@ -76,6 +76,11 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
+### [修改] 2026-03-23 — TheoryVerdict 增加 derivative + TheoryDecision 扩展字段
+- **目的**：支持创新性评估、因果推演和跨 idea 去重
+- **改动**：`shared/models/fsm.py` TheoryVerdict 新增 `derivative` 枚举值；TheoryDecision 新增 6 个字段（novelty_assessment, novelty_score, differentiation, mechanism_reasoning, mechanism_confidence, similar_ideas_in_batch）
+- **验证**：`python -c "from shared.models.fsm import TheoryVerdict, TheoryDecision"` 通过
+
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 - **目的**：实现类型安全基础设施
 - **改动**：新增 shared/ 目录，含 paths.py + path_guard.py + models/ + templates/

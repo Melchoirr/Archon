@@ -43,6 +43,7 @@ class TheoryVerdict(StrEnum):
     sound = "sound"
     weak = "weak"
     flawed = "flawed"
+    derivative = "derivative"  # 与已有工作过于相似，缺乏差异化
 
 
 class DebugVerdict(StrEnum):
@@ -81,6 +82,15 @@ class TheoryDecision(BaseModel):
     supporting_papers: list[str] = Field(default_factory=list)
     contradicting_papers: list[str] = Field(default_factory=list)
     revision_suggestions: list[str] = Field(default_factory=list)
+    # 创新性评估
+    novelty_assessment: str = ""
+    novelty_score: float = Field(ge=0.0, le=1.0, default=0.5)
+    differentiation: list[str] = Field(default_factory=list)
+    # 因果推演
+    mechanism_reasoning: str = ""
+    mechanism_confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+    # 跨 idea 去重
+    similar_ideas_in_batch: list[str] = Field(default_factory=list)
 
 
 class SurveyDecision(BaseModel):

@@ -357,7 +357,7 @@ class ResearchFSM:
         )
 
         if state == "refine":
-            return orch.phase_refine(idea_id)
+            return orch.phase_refine(idea_id, feedback=idea_fsm.feedback)
         elif state == "theory_check":
             return self._run_theory_check(idea_id, idea_fsm)
         elif state == "code_reference":
@@ -534,6 +534,12 @@ class ResearchFSM:
                 return "refine", raw
             return "abandoned", raw
 
+        if decision.verdict == TheoryVerdict.derivative:
+            max_retries = MAX_RETRIES["theory_check"]
+            if retry_count < max_retries:
+                return "refine", raw  # 回去差异化
+            return "abandoned", raw   # 多次仍重复 → 放弃
+
         if decision.verdict == TheoryVerdict.flawed:
             return "abandoned", raw
 
@@ -628,11 +634,42 @@ class ResearchFSM:
         proposal_path = self.paths.idea_proposal(idea_id)
         proposal = read_file(str(proposal_path)) if proposal_path and proposal_path.exists() else ""
 
+        other_ideas_summary = self._gather_other_ideas_summary(idea_id)
+
         return {
             "theory_review": theory_review,
             "survey": survey,
             "proposal": proposal,
+            "other_ideas_summary": other_ideas_summary,
         }
+
+    def _gather_other_ideas_summary(self, current_idea_id: str) -> str:
+        """收集同 batch 其他 idea 的摘要，用于跨 idea 去重"""
+        summaries = []
+        for idea_id, idea_fsm in self.snapshot.idea_states.items():
+            if idea_id == current_idea_id:
+                continue
+
+            parts = []
+
+            # 读取 proposal（前 500 字）
+            proposal_path = self.paths.idea_proposal(idea_id)
+            if proposal_path and proposal_path.exists():
+                proposal_text = read_file(str(proposal_path))
+                parts.append(f"Proposal: {proposal_text[:500]}")
+
+            # 读取 theory_review（前 300 字，如果存在）
+            refinement_dir = self.paths.idea_refinement_dir(idea_id)
+            if refinement_dir:
+                review_path = refinement_dir / "theory_review.md"
+                if review_path.exists():
+                    review_text = read_file(str(review_path))
+                    parts.append(f"Theory Review: {review_text[:300]}")
+
+            if parts:
+                summaries.append(f"### {idea_id}\n" + "\n".join(parts))
+
+        return "\n\n".join(summaries) if summaries else ""
 
     def _build_iteration_history(self, idea_id: str,
                                   idea_fsm: IdeaFSMState) -> str:

@@ -6,7 +6,7 @@
 ## 核心文件
 - `agents/evaluators/base_evaluator.py:15-93` — `BaseEvaluator`，轻量评估器基类（单次 LLM 调用，无工具）
 - `agents/evaluators/analysis_evaluator.py:44-90` — `AnalysisEvaluator`，verdict: success/tune/enrich/restructure/code_bug/need_literature/abandon
-- `agents/evaluators/theory_evaluator.py:35-67` — `TheoryEvaluator`，verdict: sound/weak/flawed
+- `agents/evaluators/theory_evaluator.py:35-82` — `TheoryEvaluator`，verdict: sound/weak/flawed/derivative
 - `agents/evaluators/survey_evaluator.py:41-73` — `SurveyEvaluator`，verdict: sufficient/need_more
 - `agents/evaluators/__init__.py:1-6` — 评估器包导出
 
@@ -17,11 +17,11 @@
 
 **AnalysisEvaluator** 输出：verdict, confidence, metrics_vs_baseline, metrics_vs_expectation, expectations_met_ratio, failure_category, root_cause, iteration_trend, remaining_potential, next_action_detail, suggested_changes[]
 
-**TheoryEvaluator** 输出：verdict, issues[], supporting_papers[], contradicting_papers[], revision_suggestions[]
+**TheoryEvaluator** 输出：verdict, issues[], supporting_papers[], contradicting_papers[], revision_suggestions[], novelty_assessment, novelty_score(0-1), differentiation[], mechanism_reasoning, mechanism_confidence(0-1), similar_ideas_in_batch[]
 
 **SurveyEvaluator** 输出：verdict, coverage_score (0-1), covered_areas[], gap_areas[], recommended_queries[]
 
-**关键数据结构**：`AnalysisDecision`(fsm.py:62)、`TheoryDecision`(fsm.py:77)、`SurveyDecision`(fsm.py:86)
+**关键数据结构**：`AnalysisDecision`(fsm.py:62)、`TheoryDecision`(fsm.py:77, 含创新性+因果推演字段)、`SurveyDecision`(fsm.py:93)
 
 ## 运行流程
 
@@ -58,6 +58,11 @@ result = evaluator.evaluate({"analysis_md": "...", "metrics_json": "..."})
 （暂无）
 
 ## 变化
+### [修改] 2026-03-23 — TheoryEvaluator 扩展创新性 + 因果推演 + 跨 idea 去重
+- **目的**：评估 idea 的创新性、因果机制可信度，并检测同 batch idea 重复
+- **改动**：`theory_evaluator.py` SYSTEM_PROMPT 增加 derivative verdict 和 6 个新字段；`build_prompt()` 增加 `other_ideas_summary` 参数；`parse_decision()` 解析新字段
+- **验证**：import + build_prompt 调用通过
+
 ### [实现] 2026-03-17 10:38 — 评估器体系初始实现 (`b6b5ff6`)
 - **目的**：从 FSM 引擎中拆分评估逻辑为独立评估器
 - **改动**：新增 evaluators/ 目录（base + 3 个专用评估器）

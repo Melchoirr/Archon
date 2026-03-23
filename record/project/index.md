@@ -73,12 +73,12 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F04 — 评估器体系 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/evaluators/`
 - **上游**：F02, F07, F09 / **下游**：F02
-- **最后变更**：2026-03-17 10:38
+- **最后变更**：2026-03-23
 
 <details><summary>功能概要</summary>
 
 **做什么**：3 个轻量级评估器（单次 LLM 调用，无工具），为 FSM 提供结构化路由决策
-**怎么做**：build_prompt() → 单次 LLM 调用 → YAML 解析 → Pydantic Decision 模型。AnalysisEvaluator(7 verdict)、TheoryEvaluator(3 verdict)、SurveyEvaluator(2 verdict)
+**怎么做**：build_prompt() → 单次 LLM 调用 → YAML 解析 → Pydantic Decision 模型。AnalysisEvaluator(7 verdict)、TheoryEvaluator(4 verdict: sound/weak/flawed/derivative + 创新性/因果推演)、SurveyEvaluator(2 verdict)
 **关键接口**：`BaseEvaluator.evaluate(context)`, `parse_decision(raw)`
 **数据流**：Agent 产出物（analysis.md, theory_review.md 等） → 评估器 → verdict → FSM 路由
 
@@ -121,7 +121,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F07 — 研究设计 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/elaborate_agent.py`, `agents/refinement_agent.py`, `agents/design_agent.py`, `agents/theory_check_agent.py`
 - **上游**：F01, F05, F06 / **下游**：F04, F08
-- **最后变更**：2026-03-11 17:12
+- **最后变更**：2026-03-23
 
 <details><summary>功能概要</summary>
 
@@ -169,7 +169,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F10 — 数据模型与路径管理 · ✅已完成 · 🟢在用
 - **核心文件**：`shared/paths.py`, `shared/path_guard.py`, `shared/models/`, `shared/templates/`
 - **上游**：无 / **下游**：F01-F12 全部
-- **最后变更**：2026-03-17 10:46
+- **最后变更**：2026-03-23
 
 <details><summary>功能概要</summary>
 

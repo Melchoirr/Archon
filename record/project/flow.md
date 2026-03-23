@@ -73,6 +73,7 @@ flowchart TD
     IDEA --> REF --> TC
     TC -.->|"评估"| TEVAL
     TEVAL -.->|"weak → 返回 refine"| REF
+    TEVAL -.->|"derivative → 差异化 refine"| REF
     TEVAL -.->|"sound → 继续"| CREF
     CREF --> CODE --> DBG --> EXP --> ANA
     ANA -.->|"评估"| AEVAL
@@ -203,12 +204,13 @@ flowchart TD
 - **处理逻辑**：
   1. 创建 `TheoryCheckAgent`（6 个工具，15 次迭代）
   2. Agent 提取关键声明 → 文献交叉验证 → 写 `theory_review.md`
-  3. `TheoryEvaluator` 评估理论质量
+  3. `TheoryEvaluator` 评估理论质量（含创新性 + 因果推演 + 跨 idea 去重）
 - **输出数据**：`refinement/theory_review.md`
 - **关键分支**：
-  - `sound` → 继续 code_reference（retry_counts 清零）
+  - `sound` → 继续 code_reference
   - `weak` → 返回 refine（附带 feedback，retry_count+1，最大 3 次）
-  - `flawed` → 返回 refine 或 abandon
+  - `derivative` → 返回 refine 差异化（附带 feedback，retry_count+1，最大 3 次后 abandon）
+  - `flawed` → abandon
 
 ### 阶段 7：Code Reference — 代码参考获取
 - **涉及功能**：F08, F05
@@ -374,6 +376,6 @@ ideas/I001_*/conclusion.md
 | `IdeaPhases` | `shared/models/research_tree.py:27` | 8 个阶段的状态追踪 |
 | `ExperimentStep` / `Iteration` | `shared/models/research_tree.py:46,39` | 实验步骤 + 版本迭代 |
 | `AnalysisDecision` | `shared/models/fsm.py:62` | 分析评估结构化输出 |
-| `TheoryDecision` | `shared/models/fsm.py:77` | 理论评估结构化输出 |
+| `TheoryDecision` | `shared/models/fsm.py:77` | 理论评估结构化输出（含创新性+因果推演字段） |
 | `Paper` / `PaperIndexEntry` | `shared/models/paper.py:17,31` | 论文元数据标准化 |
 | `ExperienceEntry` | `shared/models/memory.py:10` | 经验日志条目 |

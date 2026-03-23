@@ -111,8 +111,9 @@ class RefinementAgent(BaseAgent):
     def build_prompt(self, *, topic_title: str, dataset_names: str = "",
                      metric_names: str = "", topic_dir: str = "",
                      idea_dir: str, proposal: str, context: str = "",
-                     past_exp: str = "", refinement_dir: str) -> str:
-        return f"""请将以下 idea 展开为完整技术方案。
+                     past_exp: str = "", refinement_dir: str,
+                     feedback: str = "") -> str:
+        prompt = f"""请将以下 idea 展开为完整技术方案。
 
 ## 研究课题
 {topic_title}
@@ -142,3 +143,6 @@ class RefinementAgent(BaseAgent):
 4. {idea_dir}/experiment_plan.md - 阶段性实验计划（含预期结果）
 
 注意: 使用 update_idea_phase 更新阶段状态时传入 idea_id、phase 名和 status。"""
+        if feedback:
+            prompt += f"\n\n## 上一轮评估反馈\n{feedback}\n\n请特别关注反馈中提到的问题，针对性地改进方案。"
+        return prompt
