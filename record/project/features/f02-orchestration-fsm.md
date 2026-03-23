@@ -76,7 +76,7 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-24 00:13 — FSM 反馈循环统一用文档路径替代 thin feedback 字符串
+### [修改] 2026-03-24 00:13 — FSM 反馈循环统一用文档路径替代 thin feedback 字符串 (`1e3166c`)
 - **目的**：FSM 回退时 `idea_fsm.feedback` 只是拼接的短字符串，下游 Agent 信息不足。改为传完整文档路径让 Agent 自行读取
 - **改动**：`fsm_engine.py` `_run_debug()` 去掉 `feedback=idea_fsm.feedback`，改为检查 analysis.md/debug_report.md 并传路径，通过 `orch.phase_debug()` 调用；`orchestrator.py` `phase_debug()` 签名去掉 `feedback`，增加 `analysis_path` + `debug_report_path`；`phase_code()` 检查 debug_report.md 并传路径；`phase_refine()` 检查 analysis.md 并传路径
 - **验证**：import 通过

@@ -67,7 +67,7 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-24 00:13 — RefinementAgent 增加 analysis_path 参数
+### [修改] 2026-03-24 00:13 — RefinementAgent 增加 analysis_path 参数 (`1e3166c`)
 - **目的**：analyze→refine 回退时，让 Agent 读取 analysis.md 了解实验暴露的设计问题
 - **改动**：`refinement_agent.py` `build_prompt()` 增加 `analysis_path` 参数，prompt 指示 Agent 先 read_file 了解分析结论；`orchestrator.py` `phase_refine()` 检查 analysis.md 存在则传路径
 - **验证**：import 通过

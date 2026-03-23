@@ -70,7 +70,7 @@ python run_research.py experiment --idea T001-I001 --step S01
 （暂无）
 
 ## 变化
-### [修改] 2026-03-24 00:13 — DebugAgent/ExperimentAgent 用文档路径替代 feedback 字符串
+### [修改] 2026-03-24 00:13 — DebugAgent/ExperimentAgent 用文档路径替代 feedback 字符串 (`1e3166c`)
 - **目的**：analyze→debug、debug→debug、debug→code 回退时，下游 Agent 信息不足。改为传文档路径让 Agent 自行读取完整内容
 - **改动**：`debug_agent.py` `build_prompt()` 去掉 `feedback`，增加 `analysis_path` + `debug_report_path`；`experiment_agent.py` `build_code_prompt()` 增加 `debug_report_path`，refactor 为先赋值 prompt 变量再 return
 - **验证**：import 通过
