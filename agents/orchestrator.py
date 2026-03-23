@@ -853,6 +853,12 @@ class ResearchOrchestrator:
         if review_file.exists():
             theory_review_path = str(review_file)
 
+        # 检查 analysis.md（analyze→refine 回退时提供上下文）
+        analysis_path = ""
+        analysis_file = self.paths.idea_dir(idea_id) / "analysis.md"
+        if analysis_file.exists():
+            analysis_path = str(analysis_file)
+
         tc = self.topic_config
 
         prompt = agent.build_prompt(
@@ -866,6 +872,7 @@ class ResearchOrchestrator:
             past_exp=past_exp,
             refinement_dir=refinement_dir,
             theory_review_path=theory_review_path,
+            analysis_path=analysis_path,
         )
 
         result = agent.run(prompt)
@@ -945,12 +952,19 @@ class ResearchOrchestrator:
         plan = read_file(plan_path) if os.path.exists(plan_path) else ""
         past_exp = query_memory(idea_id=idea_id)
 
+        # 检查 debug_report.md（debug→code 回退时提供上下文）
+        debug_report_path = ""
+        debug_report_file = idea_dir_path / "src" / "debug_report.md"
+        if debug_report_file.exists():
+            debug_report_path = str(debug_report_file)
+
         prompt = agent.build_code_prompt(
             design_content=design_content,
             plan=plan,
             context=context,
             past_exp=past_exp,
             idea_dir=idea_dir,
+            debug_report_path=debug_report_path,
         )
 
         result = agent.run(prompt)

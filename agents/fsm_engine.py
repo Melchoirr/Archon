@@ -407,32 +407,35 @@ class ResearchFSM:
         return agent.run(prompt)
 
     def _run_debug(self, idea_id: str, idea_fsm: IdeaFSMState) -> str:
-        """运行 DebugAgent"""
-        from agents.debug_agent import DebugAgent
+        """运行 DebugAgent（通过 orchestrator 调用，传文件路径而非 feedback 字符串）"""
+        from agents.orchestrator import ResearchOrchestrator
 
-        agent = DebugAgent(self.config_path)
+        orch = ResearchOrchestrator(
+            topic_dir=str(self.paths.topic_dir),
+            config_path=self.config_path,
+        )
 
         idea_dir = self.paths.idea_dir(idea_id)
         if not idea_dir:
             return f"未找到 idea 目录: {idea_id}"
 
-        src_dir = str(idea_dir / "src")
-        structure_path = str(idea_dir / "src" / "structure.md")
-        plan_path = str(idea_dir / "experiment_plan.md")
+        # 检查 analysis.md（analyze→debug 回退时提供上下文）
+        analysis_path = ""
+        analysis_file = idea_dir / "analysis.md"
+        if analysis_file.exists():
+            analysis_path = str(analysis_file)
 
-        venv_dir = idea_dir / "src" / ".venv"
-        venv_path = str(venv_dir) if venv_dir.exists() else ""
+        # 检查 debug_report.md（debug→debug 重试时提供上下文）
+        debug_report_path = ""
+        debug_report_file = idea_dir / "src" / "debug_report.md"
+        if debug_report_file.exists():
+            debug_report_path = str(debug_report_file)
 
-        prompt = agent.build_prompt(
-            idea_dir=str(idea_dir),
-            src_dir=src_dir,
-            structure_path=structure_path,
-            plan_path=plan_path,
-            feedback=idea_fsm.feedback,
-            venv_path=venv_path,
+        return orch.phase_debug(
+            idea_id,
+            analysis_path=analysis_path,
+            debug_report_path=debug_report_path,
         )
-
-        return agent.run(prompt)
 
     # ── 转换评估 ─────────────────────────────────────────────
 

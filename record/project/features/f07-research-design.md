@@ -67,7 +67,7 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-24 01:20 — DesignAgent/RefinementAgent system prompt 添加工具表格+工作流
+### [修改] 2026-03-24 01:20 — DesignAgent/RefinementAgent system prompt 添加工具表格+工作流 (`d96766b`)
 - **目的**：Agent system prompt 缺乏工具使用指导，LLM 不清楚何时/如何调用工具
 - **改动**：`agents/design_agent.py` SYSTEM_PROMPT 插入可用工具表格（7 行）和 6 步工作流；`agents/refinement_agent.py` SYSTEM_PROMPT 插入可用工具表格（8 行）和 6 步工作流
 - **验证**：import 通过
