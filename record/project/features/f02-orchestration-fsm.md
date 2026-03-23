@@ -60,6 +60,8 @@
 
 ### 错误与边界情况
 - FSM 重试上限（refine:4, theory_check:3, debug:6, experiment:6, survey:4）
+- retry_count 递增当前状态（评估器用 state 的 count 判断重试上限）
+- 回退转换（theory_check→refine, analyze→refine, debug→refine）需用户确认
 - `force_transition()` 手动跳转到任意状态（附带 feedback）
 - Topic 目录不存在时自动发现最新 topic
 
@@ -74,6 +76,11 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-23 — FSM retry_count 递增错误 + theory_check→refine 缺少用户确认
+- **目的**：修复 theory_check↔refine 死循环：retry_count 递增了 next_state 而非 current_state 导致上限不生效；theory_check→refine 不在 USER_CONFIRM_TRANSITIONS 中导致自动循环无干预
+- **改动**：`fsm_engine.py` 行 201+256 `retry_counts[next_state]` → `retry_counts[state]`；USER_CONFIRM_TRANSITIONS 新增 `("theory_check", "refine")`
+- **验证**：未测试
+
 ### [修改] 2026-03-23 — FSM 路由增加 derivative verdict + 跨 idea 上下文 + refine feedback 传递 (`535b346`)
 - **目的**：支持 TheoryEvaluator 新增的 derivative 判定；为评估器提供同 batch 其他 idea 摘要；refine 回退时传递评估 feedback
 - **改动**：`fsm_engine.py` `_route_theory_check()` 增加 derivative 分支（→ refine 或 abandon）；`_gather_theory_eval_context()` 增加 other_ideas_summary；新增 `_gather_other_ideas_summary()` 方法；`_execute_idea_state("refine")` 传递 `feedback=idea_fsm.feedback`。`orchestrator.py` `phase_refine()` 签名增加 feedback 参数并传递给 RefinementAgent

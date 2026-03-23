@@ -56,6 +56,7 @@ USER_CONFIRM_TRANSITIONS = {
     ("analyze", "deep_survey"),
     ("analyze", "abandoned"),
     ("theory_check", "abandoned"),
+    ("theory_check", "refine"),
     ("debug", "refine"),
     # 用户选择
     ("survey", "ideation"),
@@ -197,8 +198,8 @@ class ResearchFSM:
                                      idea_id=idea_id,
                                      decision_snapshot=decision if isinstance(decision, dict) else None)
 
-            # 更新 retry count（无条件递增，防止跨状态回退死循环）
-            idea_fsm.retry_counts[next_state] = idea_fsm.retry_counts.get(next_state, 0) + 1
+            # 更新 retry count — 递增当前状态（评估器用 state 的 count 判断重试上限）
+            idea_fsm.retry_counts[state] = idea_fsm.retry_counts.get(state, 0) + 1
 
             # 传递 feedback
             if isinstance(decision, dict):
@@ -251,8 +252,8 @@ class ResearchFSM:
             record = self._record_transition(state, next_state, trigger, idea_id=idea_id,
                                               decision_snapshot=decision if isinstance(decision, dict) else None)
 
-            # 更新 retry count（与 run_idea 保持一致）
-            idea_fsm.retry_counts[next_state] = idea_fsm.retry_counts.get(next_state, 0) + 1
+            # 更新 retry count — 递增当前状态（与 run_idea 保持一致）
+            idea_fsm.retry_counts[state] = idea_fsm.retry_counts.get(state, 0) + 1
 
             # 传递 feedback（与 run_idea 保持一致）
             if isinstance(decision, dict):

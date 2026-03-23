@@ -206,10 +206,10 @@ flowchart TD
   2. Agent 提取关键声明 → 文献交叉验证 → 写 `theory_review.md`
   3. `TheoryEvaluator` 评估理论质量（含创新性 + 因果推演 + 跨 idea 去重）
 - **输出数据**：`refinement/theory_review.md`
-- **关键分支**：
+- **关键分支**（weak/derivative 需用户确认）：
   - `sound` → 继续 code_reference
-  - `weak` → 返回 refine（附带 feedback，retry_count+1，最大 3 次）
-  - `derivative` → 返回 refine 差异化（附带 feedback，retry_count+1，最大 3 次后 abandon）
+  - `weak` → 用户确认后返回 refine（theory_check 的 retry_count+1，最大 3 次后 abandon）
+  - `derivative` → 用户确认后返回 refine 差异化（theory_check 的 retry_count+1，最大 3 次后 abandon）
   - `flawed` → abandon
 
 ### 阶段 7：Code Reference — 代码参考获取
