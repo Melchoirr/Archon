@@ -73,7 +73,7 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [修复] 2026-03-23 — phase_ideation 传入 topic_dir
+### [修复] 2026-03-23 — phase_ideation 传入 topic_dir (`d081a7c`)
 <details><summary>详情</summary>
 
 **计划**：确保 IdeationAgent 的 idea_graph 工具写入正确的 topic 目录

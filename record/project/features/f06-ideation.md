@@ -66,7 +66,7 @@ python run_research.py status --topic T001
 （暂无）
 
 ## 变化
-### [修复] 2026-03-23 — idea_graph 绑定 topic_dir
+### [修复] 2026-03-23 — idea_graph 绑定 topic_dir (`d081a7c`)
 <details><summary>详情</summary>
 
 **计划**：修复 idea_graph 工具的 topic_dir 默认值为 "."，导致 idea_graph.yaml 写到项目根目录而非 topic 目录
