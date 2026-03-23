@@ -76,22 +76,22 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-23 — refine feedback 改为文件路径方式 (`ca9682c`)
+### [修改] 2026-03-23 23:43 — refine feedback 改为文件路径方式 (`ca9682c`)
 - **目的**：去掉 feedback 字符串传递，改为让 RefinementAgent 自行读取 theory_review.md 获取完整审查信息
 - **改动**：`orchestrator.py` `phase_refine()` 移除 feedback 参数，改为检测 theory_review.md 是否存在并传路径；`refinement_agent.py` `build_prompt()` 移除 feedback 参数，改为 theory_review_path；`fsm_engine.py` refine 调用不再传 feedback
 - **验证**：import 通过
 
-### [修复] 2026-03-23 — FSM retry_count 递增错误 + theory_check→refine 缺少用户确认 (`069d579`)
+### [修复] 2026-03-23 23:36 — FSM retry_count 递增错误 + theory_check→refine 缺少用户确认 (`069d579`)
 - **目的**：修复 theory_check↔refine 死循环：retry_count 递增了 next_state 而非 current_state 导致上限不生效；theory_check→refine 不在 USER_CONFIRM_TRANSITIONS 中导致自动循环无干预
 - **改动**：`fsm_engine.py` 行 201+256 `retry_counts[next_state]` → `retry_counts[state]`；USER_CONFIRM_TRANSITIONS 新增 `("theory_check", "refine")`
 - **验证**：未测试
 
-### [修改] 2026-03-23 — FSM 路由增加 derivative verdict + 跨 idea 上下文 + refine feedback 传递 (`535b346`)
+### [修改] 2026-03-23 23:05 — FSM 路由增加 derivative verdict + 跨 idea 上下文 + refine feedback 传递 (`535b346`)
 - **目的**：支持 TheoryEvaluator 新增的 derivative 判定；为评估器提供同 batch 其他 idea 摘要；refine 回退时传递评估 feedback
 - **改动**：`fsm_engine.py` `_route_theory_check()` 增加 derivative 分支（→ refine 或 abandon）；`_gather_theory_eval_context()` 增加 other_ideas_summary；新增 `_gather_other_ideas_summary()` 方法；`_execute_idea_state("refine")` 传递 `feedback=idea_fsm.feedback`。`orchestrator.py` `phase_refine()` 签名增加 feedback 参数并传递给 RefinementAgent
 - **验证**：import 通过
 
-### [修复] 2026-03-23 — phase_ideation 传入 topic_dir (`d081a7c`)
+### [修复] 2026-03-23 22:15 — phase_ideation 传入 topic_dir (`d081a7c`)
 - **目的**：确保 IdeationAgent 的 idea_graph 工具写入正确的 topic 目录
 - **改动**：orchestrator.py `phase_ideation()` 创建 IdeationAgent 时传入 `topic_dir=self.topic_dir`
 - **验证**：未测试

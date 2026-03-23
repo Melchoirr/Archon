@@ -160,7 +160,8 @@ class ExperimentAgent(BaseAgent):
 
     def build_code_prompt(self, *, design_content: str, plan: str,
                           context: str = "", past_exp: str = "",
-                          idea_dir: str) -> str:
+                          idea_dir: str,
+                          debug_report_path: str = "") -> str:
         infra_template = self._load_infra_template()
         infra_section = ""
         if infra_template:
@@ -169,7 +170,7 @@ class ExperimentAgent(BaseAgent):
 ## 实验基础设施规范（MANDATORY — 必须严格遵循）
 {infra_template}
 """
-        return f"""根据设计方案和实验计划，实现代码。
+        prompt = f"""根据设计方案和实验计划，实现代码。
 
 ## 技术方案
 {design_content}
@@ -185,6 +186,12 @@ class ExperimentAgent(BaseAgent):
 代码放在 {idea_dir}/src/（model/ 和 experiment/ 子目录），
 先生成 {idea_dir}/src/structure.md 记录代码结构。
 同时生成 {idea_dir}/src/requirements.txt，列出所有第三方依赖（每行一个包名）。"""
+        if debug_report_path:
+            prompt += f"""
+
+## 调试报告（代码重写原因）
+请先用 read_file 读取 `{debug_report_path}`，了解上一轮调试发现的问题。重写代码时需针对性地解决这些问题。"""
+        return prompt
 
     def build_experiment_prompt(self, *, step_id: str, version: int,
                                 plan: str, structure: str,

@@ -11,7 +11,7 @@
 - `shared/models/fsm.py:10-135` — FSM 模型（FSMState, AnalysisVerdict, TheoryVerdict(含 derivative), DebugVerdict, SurveyVerdict, *Decision, TransitionRecord, IdeaFSMState, FSMSnapshot）
 - `shared/models/paper.py:8-43` — 论文模型（Author, ExternalIds, Paper, PaperIndexEntry）
 - `shared/models/memory.py:10-19` — `ExperienceEntry`，经验日志条目
-- `shared/models/tool_params.py:12-325` — `ToolParamsBase` + 30+ 工具参数 Pydantic 模型
+- `shared/models/tool_params.py:12-331` — `ToolParamsBase` + 30+ 工具参数 Pydantic 模型（含丰富 docstring：使用场景/返回格式/示例）
 - `shared/models/enums.py:6-65` — 枚举定义（PhaseState, IdeaStatus, IdeaCategory, ExperienceType, RelationType, PhaseName）
 - `shared/utils/config_helpers.py:8-24` — `load_topic_config()`
 - `shared/templates/experiment_infrastructure.md` — 实验代码基础设施规范
@@ -33,7 +33,7 @@
 - TopicConfig：配置校验 + computed properties (dataset_names, metric_names 等)
 - ResearchTree：层级追踪（topic → idea → phase → step → iteration）
 - FSM 模型：状态枚举 + verdict + decision + snapshot
-- ToolParamsBase：30+ 工具参数模型，`to_schema()` 自动转 JSON Schema
+- ToolParamsBase：30+ 工具参数模型，`to_schema()` 自动转 JSON Schema（docstring 含使用场景、返回格式、调用示例，LLM 可通过 description 字段获取完整工具指导）
 - Score：4 维评分 + 加权 composite（Novelty×0.35 + Significance×0.35 + Feasibility×0.20 + Alignment×0.10）
 
 **实验代码模板**：标准化目录结构、YAML 配置系统、Trainer/Evaluator 规范、Ablation 支持、可视化模块
@@ -76,7 +76,12 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
-### [修改] 2026-03-23 — TheoryVerdict 增加 derivative + TheoryDecision 扩展字段 (`535b346`)
+### [修改] 2026-03-24 01:20 — 丰富 18 个工具的 docstring（使用场景/返回/示例）
+- **目的**：LLM 通过 tool schema description 获取工具使用指导，原 docstring 过于简略（一句话）
+- **改动**：`shared/models/tool_params.py` 为 ReadFile/WriteFile/AppendFile/ListDirectory/ReadTree/UpdateIdeaPhase/UpdateIdeaStatus/UpdateSurveyStatus/UpdateElaborateStatus/AddIdea/AddExperimentStep/UpdateIteration/QueryMemory/AddExperience/DownloadPaper/ReadPaperSection/RunCommand/AnalyzeImage/AnalyzePlots 共 18 个 Params 类补充结构化 docstring
+- **验证**：`to_schema()["description"]` 验证全部包含「使用场景」「返回」「示例」
+
+### [修改] 2026-03-23 23:05 — TheoryVerdict 增加 derivative + TheoryDecision 扩展字段 (`535b346`)
 - **目的**：支持创新性评估、因果推演和跨 idea 去重
 - **改动**：`shared/models/fsm.py` TheoryVerdict 新增 `derivative` 枚举值；TheoryDecision 新增 6 个字段（novelty_assessment, novelty_score, differentiation, mechanism_reasoning, mechanism_confidence, similar_ideas_in_batch）
 - **验证**：`python -c "from shared.models.fsm import TheoryVerdict, TheoryDecision"` 通过

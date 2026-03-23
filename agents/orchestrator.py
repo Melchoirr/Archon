@@ -1238,7 +1238,9 @@ class ResearchOrchestrator:
         print(f"\nTheory Check 完成! 请 review: {output_path}")
         return result
 
-    def phase_debug(self, idea_id: str, feedback: str = "") -> str:
+    def phase_debug(self, idea_id: str,
+                    analysis_path: str = "",
+                    debug_report_path: str = "") -> str:
         """调试：运行测试、修复 bug"""
         self._reload_config()
         self._log_phase_start("debug", idea_id)
@@ -1254,12 +1256,17 @@ class ResearchOrchestrator:
         structure_path = str(idea_dir_path / "src" / "structure.md")
         plan_path = str(idea_dir_path / "experiment_plan.md")
 
+        venv_dir = idea_dir_path / "src" / ".venv"
+        venv_path = str(venv_dir) if venv_dir.exists() else ""
+
         prompt = agent.build_prompt(
             idea_dir=str(idea_dir_path),
             src_dir=src_dir,
             structure_path=structure_path,
             plan_path=plan_path,
-            feedback=feedback,
+            analysis_path=analysis_path,
+            debug_report_path=debug_report_path,
+            venv_path=venv_path,
         )
 
         result = agent.run(prompt)

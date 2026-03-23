@@ -4,12 +4,12 @@
 - **实现状态**：✅已完成
 
 ## 核心文件
-- `agents/analysis_agent.py:84-108` — `AnalysisAgent.__init__()`，7 个工具，20 次迭代
-- `agents/analysis_agent.py:109-139` — `build_prompt()`，分析 prompt（单版本/总分析）
-- `agents/analysis_agent.py:15-81` — system prompt（数据驱动、VLM 分析、≥1500 字符）
-- `agents/conclusion_agent.py:76-94` — `ConclusionAgent.__init__()`，5 个工具，15 次迭代
-- `agents/conclusion_agent.py:96-112` — `build_prompt()`，结论 prompt
-- `agents/conclusion_agent.py:11-73` — system prompt（客观、6 节、≥2000 字符）
+- `agents/analysis_agent.py:84-125` — `AnalysisAgent.__init__()`，9 个工具，20 次迭代；system prompt 含工具表格+工作流
+- `agents/analysis_agent.py:126-156` — `build_prompt()`，分析 prompt（单版本/总分析）
+- `agents/analysis_agent.py:15-98` — system prompt（数据驱动、VLM 分析、≥1500 字符，含工具表格+8 步工作流）
+- `agents/conclusion_agent.py:76-111` — `ConclusionAgent.__init__()`，5 个工具，15 次迭代；system prompt 含工具表格+工作流
+- `agents/conclusion_agent.py:113-129` — `build_prompt()`，结论 prompt
+- `agents/conclusion_agent.py:11-89` — system prompt（客观、6 节、≥2000 字符，含工具表格+5 步工作流）
 - `tools/vlm_analysis.py:25-72` — `analyze_image()`，Qwen VL 3.5-Plus 图像分析
 - `tools/vlm_analysis.py:74-98` — `analyze_plots_dir()`，批量图表分析
 
@@ -69,6 +69,11 @@ python run_research.py conclude --idea T001-I001
 （暂无）
 
 ## 变化
+### [修改] 2026-03-24 01:20 — AnalysisAgent/ConclusionAgent system prompt 添加工具表格+工作流
+- **目的**：Agent system prompt 缺乏工具使用指导，LLM 不清楚何时/如何调用工具
+- **改动**：`agents/analysis_agent.py` SYSTEM_PROMPT 插入可用工具表格（9 行）和 8 步工作流；`agents/conclusion_agent.py` SYSTEM_PROMPT 插入可用工具表格（5 行）和 5 步工作流
+- **验证**：import 通过
+
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 - **目的**：实现实验分析 + 客观结论
 - **改动**：新增 analysis_agent.py + conclusion_agent.py + vlm_analysis.py

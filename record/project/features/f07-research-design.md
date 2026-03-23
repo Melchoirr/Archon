@@ -6,9 +6,9 @@
 ## 核心文件
 - `agents/elaborate_agent.py:60-79` — `ElaborateAgent.__init__()`，3 个工具，12 次迭代
 - `agents/elaborate_agent.py:81-97` — `build_prompt()`，展开研究背景
-- `agents/refinement_agent.py:76-109` — `RefinementAgent.__init__()`，7 个工具，20 次迭代
+- `agents/refinement_agent.py:76-109` — `RefinementAgent.__init__()`，8 个工具，20 次迭代；system prompt 含工具表格+工作流
 - `agents/refinement_agent.py:111-149` — `build_prompt()`，理论深化 + 模块设计 + 可选 theory_review_path
-- `agents/design_agent.py:36-58` — `DesignAgent.__init__()`，7 个工具，15 次迭代（legacy）
+- `agents/design_agent.py:36-75` — `DesignAgent.__init__()`，7 个工具，15 次迭代（legacy）；system prompt 含工具表格+工作流
 - `agents/theory_check_agent.py:48-68` — `TheoryCheckAgent.__init__()`，6 个工具，15 次迭代
 - `agents/theory_check_agent.py:69-91` — `build_prompt()`，理论交叉验证 + 创新性评估 + 因果推演
 
@@ -67,17 +67,22 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
+### [修改] 2026-03-24 01:20 — DesignAgent/RefinementAgent system prompt 添加工具表格+工作流
+- **目的**：Agent system prompt 缺乏工具使用指导，LLM 不清楚何时/如何调用工具
+- **改动**：`agents/design_agent.py` SYSTEM_PROMPT 插入可用工具表格（7 行）和 6 步工作流；`agents/refinement_agent.py` SYSTEM_PROMPT 插入可用工具表格（8 行）和 6 步工作流
+- **验证**：import 通过
+
 ### [修复] 2026-03-23 23:50 — 多轮 refine 迭代改进而非从零重写 (`5416811`)
 - **目的**：多轮 refine 时 Agent 不知道上一轮写了什么，每次从零重写导致迭代无效
 - **改动**：`refinement_agent.py` `build_prompt()` 当 theory_review_path 存在时，prompt 指示 Agent 先读取上一轮 theory.md / model_*.md，在此基础上针对性改进
 - **验证**：未测试
 
-### [修改] 2026-03-23 — RefinementAgent feedback 改为 theory_review_path (`ca9682c`)
+### [修改] 2026-03-23 23:43 — RefinementAgent feedback 改为 theory_review_path (`ca9682c`)
 - **目的**：去掉 feedback 字符串，让 agent 自行读取完整的 theory_review.md
 - **改动**：`refinement_agent.py` `build_prompt()` 参数 `feedback` → `theory_review_path`，prompt 指示 agent 用 read_file 读取
 - **验证**：import 通过
 
-### [修改] 2026-03-23 — TheoryCheckAgent 增加创新性评估 + 因果推演审查步骤，RefinementAgent 支持 feedback (`535b346`)
+### [修改] 2026-03-23 23:05 — TheoryCheckAgent 增加创新性评估 + 因果推演审查步骤，RefinementAgent 支持 feedback (`535b346`)
 - **目的**：理论审查增加创新性对比和因果推演维度；refine 回退时能接收上轮评估反馈
 - **改动**：`theory_check_agent.py` SYSTEM_PROMPT 增加步骤 5（创新性评估）和步骤 6（因果推演）；`refinement_agent.py` `build_prompt()` 增加 `feedback` 参数
 - **验证**：import 通过

@@ -134,7 +134,8 @@ class RefinementAgent(BaseAgent):
                      metric_names: str = "", topic_dir: str = "",
                      idea_dir: str, proposal: str, context: str = "",
                      past_exp: str = "", refinement_dir: str,
-                     theory_review_path: str = "") -> str:
+                     theory_review_path: str = "",
+                     analysis_path: str = "") -> str:
         prompt = f"""请将以下 idea 展开为完整技术方案。
 
 ## 研究课题
@@ -176,4 +177,9 @@ class RefinementAgent(BaseAgent):
 2. 用 read_file 读取 `{refinement_dir}/theory.md`、`{refinement_dir}/model_modular.md`、`{refinement_dir}/model_complete.md`，了解上一轮方案
 3. **在上一轮基础上针对性改进**，不要从零重写。保留没有问题的部分，只修改审查指出的问题
 4. 写入同路径文件覆盖"""
+        if analysis_path:
+            prompt += f"""
+
+## 实验分析报告（analyze→refine 回退）
+实验分析暴露了设计层面的问题。请先用 read_file 读取 `{analysis_path}`，了解实验结果和分析结论，在改进方案时针对性地解决这些问题。"""
         return prompt

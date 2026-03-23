@@ -41,7 +41,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F02 — 编排引擎与 FSM 状态机 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/orchestrator.py`, `agents/fsm_engine.py`
 - **上游**：F01 / **下游**：F03-F12
-- **最后变更**：2026-03-23
+- **最后变更**：2026-03-23 23:43
 
 <details><summary>功能概要</summary>
 
@@ -73,7 +73,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F04 — 评估器体系 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/evaluators/`
 - **上游**：F02, F07, F09 / **下游**：F02
-- **最后变更**：2026-03-23
+- **最后变更**：2026-03-23 23:05
 
 <details><summary>功能概要</summary>
 
@@ -105,7 +105,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F06 — Idea 生成与评分 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/ideation_agent.py`, `tools/idea_scorer.py`, `tools/idea_graph.py`
 - **上游**：F05, F11 / **下游**：F07
-- **最后变更**：2026-03-23
+- **最后变更**：2026-03-23 22:15
 
 <details><summary>功能概要</summary>
 
@@ -121,7 +121,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F07 — 研究设计 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/elaborate_agent.py`, `agents/refinement_agent.py`, `agents/design_agent.py`, `agents/theory_check_agent.py`
 - **上游**：F01, F05, F06 / **下游**：F04, F08
-- **最后变更**：2026-03-23
+- **最后变更**：2026-03-24 01:20
 
 <details><summary>功能概要</summary>
 
@@ -153,7 +153,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F09 — 分析与结论 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/analysis_agent.py`, `agents/conclusion_agent.py`, `tools/vlm_analysis.py`
 - **上游**：F08, F02 / **下游**：F04, F11
-- **最后变更**：2026-03-11 17:12
+- **最后变更**：2026-03-24 01:20
 
 <details><summary>功能概要</summary>
 
@@ -169,7 +169,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F10 — 数据模型与路径管理 · ✅已完成 · 🟢在用
 - **核心文件**：`shared/paths.py`, `shared/path_guard.py`, `shared/models/`, `shared/templates/`
 - **上游**：无 / **下游**：F01-F12 全部
-- **最后变更**：2026-03-23
+- **最后变更**：2026-03-24 01:20
 
 <details><summary>功能概要</summary>
 
