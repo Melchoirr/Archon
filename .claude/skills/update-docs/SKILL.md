@@ -70,7 +70,7 @@ description: "MUST use after ANY of: (1) creating or updating a plan, (2) modify
 5. **Commit** — `git add` 变更文件 + 文档，commit message 准确描述变更。commit 后补 hash 到变化条目。
 
 ## 约定
-- 时间：UTC+8，`YYYY-MM-DD HH:MM`
+- 时间：UTC+8，`YYYY-MM-DD HH:MM`。**必须通过 `date '+%Y-%m-%d %H:%M'` 获取精确时间，禁止仅使用系统注入的 currentDate（它只有日期没有时间）**
 - ID：FXX 递增，文件名 `fXX-kebab-case.md`
 - 状态：✅已完成 / 🔧进行中 / 📋计划中 / ❌已废弃
 - 折叠：`<details><summary>` 包裹详情

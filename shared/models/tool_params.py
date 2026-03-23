@@ -120,7 +120,12 @@ class GetPaperCitationsParams(ToolParamsBase):
 # ── bash_exec ─────────────────────────────────────────────────
 
 class RunCommandParams(ToolParamsBase):
-    """执行 shell 命令并返回 stdout/stderr/returncode"""
+    """执行 shell 命令并返回 stdout/stderr/returncode。
+
+    使用场景：运行实验脚本、安装依赖、执行测试等需要 shell 环境的操作。
+    返回：包含 stdout、stderr、returncode 的结构化结果；超时后自动终止进程。
+    示例：run_command(command="python train.py --config config.yaml", timeout=600, venv_path="ideas/idea_001_xxx/src/.venv")
+    """
     command: str = Field(description="要执行的 shell 命令")
     timeout: int = Field(default=300, description="超时时间（秒）")
     venv_path: str = Field(default="", description="venv 目录路径。设置后命令在该 venv 中执行。")
@@ -129,35 +134,65 @@ class RunCommandParams(ToolParamsBase):
 # ── research_tree ─────────────────────────────────────────────
 
 class ReadTreeParams(ToolParamsBase):
-    """读取完整的研究树状态"""
+    """读取完整的研究树状态。
+
+    使用场景：了解当前研究进度，查看所有 idea 的状态、各阶段完成情况。开始工作前先调用此工具获取全局视图。
+    返回：JSON 格式的完整研究树，包含 survey 状态、所有 idea 及其 phases 状态。
+    示例：read_tree()
+    """
 
 
 class UpdateIdeaPhaseParams(ToolParamsBase):
-    """更新指定 idea 的某个阶段状态"""
+    """更新指定 idea 的某个阶段状态。
+
+    使用场景：在开始或完成某个阶段时更新状态，确保研究树反映真实进度。
+    返回：更新确认消息。
+    示例：update_idea_phase(idea_id="T001-I001", phase="refinement", status="completed")
+    """
     idea_id: str = Field(description="Idea ID（如 T001-I001）")
     phase: str = Field(description="阶段名: refinement/code_reference/coding/experiment/analysis/conclusion")
     status: str = Field(description="状态: pending/in_progress/running/completed/failed/skipped")
 
 
 class UpdateIdeaStatusParams(ToolParamsBase):
-    """更新指定 idea 的整体状态"""
+    """更新指定 idea 的整体状态。
+
+    使用场景：在 idea 被推荐、激活、完成或失败时更新整体状态。
+    返回：更新确认消息。
+    示例：update_idea_status(idea_id="T001-I001", status="active")
+    """
     idea_id: str = Field(description="Idea ID（如 T001-I001）")
     status: str = Field(description="状态: proposed/recommended/deprioritized/active/completed/failed")
 
 
 class UpdateSurveyStatusParams(ToolParamsBase):
-    """更新 survey 阶段状态"""
+    """更新 survey 阶段状态。
+
+    使用场景：在 survey 开始、完成或失败时更新状态，可记录完成的搜索轮次数。
+    返回：更新确认消息。
+    示例：update_survey_status(status="completed", rounds=3)
+    """
     status: str = Field(description="状态: pending/in_progress/completed/failed")
     rounds: int = Field(default=0, description="完成的轮次数")
 
 
 class UpdateElaborateStatusParams(ToolParamsBase):
-    """更新 elaborate 阶段状态"""
+    """更新 elaborate 阶段状态。
+
+    使用场景：在 elaborate（深入展开）阶段开始或完成时更新状态。
+    返回：更新确认消息。
+    示例：update_elaborate_status(status="completed")
+    """
     status: str = Field(description="状态: pending/in_progress/completed/failed")
 
 
 class AddIdeaParams(ToolParamsBase):
-    """向研究树中添加一个新的研究 idea"""
+    """向研究树中添加一个新的研究 idea。
+
+    使用场景：在 ideation 阶段产生新 idea 后，将其注册到研究树中。自动初始化所有 phases 结构（refinement/coding/experiment 等均为 pending）。
+    返回：添加确认消息，含生成的完整 idea ID。
+    示例：add_idea(idea_id="I001", title="基于频域的注意力机制", category="architecture", brief="freq_attention")
+    """
     idea_id: str = Field(description="Idea ID，如 'I001'")
     title: str = Field(description="Idea 标题")
     category: str = Field(description="类别: loss/architecture/training/inference")
@@ -165,14 +200,24 @@ class AddIdeaParams(ToolParamsBase):
 
 
 class AddExperimentStepParams(ToolParamsBase):
-    """注册一个实验步骤到指定 idea，含可配置的迭代次数"""
+    """注册一个实验步骤到指定 idea，含可配置的迭代次数。
+
+    使用场景：在实验开始前注册步骤，自动生成 step_id（S01, S02...）和对应的迭代结构（V1, V2...）。
+    返回：生成的 step_id 和初始化的迭代列表。
+    示例：add_experiment_step(idea_id="T001-I001", step_name="quick_test", max_iter=3)
+    """
     idea_id: str = Field(description="Idea ID")
     step_name: str = Field(description="步骤名称（如 quick_test, full_test）")
     max_iter: int = Field(default=3, description="最大迭代次数")
 
 
 class UpdateIterationParams(ToolParamsBase):
-    """更新实验迭代状态"""
+    """更新实验迭代状态。
+
+    使用场景：在每次实验迭代开始/完成/失败时更新状态。所有迭代完成后自动更新步骤状态。
+    返回：更新确认消息。
+    示例：update_iteration(idea_id="T001-I001", step_id="S01", version=1, status="completed")
+    """
     idea_id: str = Field(description="Idea ID")
     step_id: str = Field(description="步骤 ID（如 S01）")
     version: int = Field(description="版本号（如 1, 2, 3）")
@@ -183,7 +228,12 @@ class UpdateIterationParams(ToolParamsBase):
 # ── memory ────────────────────────────────────────────────────
 
 class QueryMemoryParams(ToolParamsBase):
-    """查询研究经验记忆，可按标签、阶段、idea ID 过滤"""
+    """查询研究经验记忆，可按标签、阶段、idea ID 过滤。
+
+    使用场景：在开始新阶段前查询历史经验，避免重复犯错；查找特定类型的 insight 或 failure 记录。
+    返回：匹配的经验条目列表（JSON），每条含 summary、details、tags、phase 等字段。
+    示例：query_memory(phase="experiment", tags="hyperparameter,failure")
+    """
     tags: str = Field(default="", description="逗号分隔的标签过滤")
     phase: str = Field(default="", description="阶段过滤: elaborate/survey/ideation/refine/code/experiment/analyze/conclude")
     idea_id: str = Field(default="", description="Idea ID 过滤")
@@ -191,7 +241,12 @@ class QueryMemoryParams(ToolParamsBase):
 
 
 class AddExperienceParams(ToolParamsBase):
-    """添加一条研究经验记录"""
+    """添加一条研究经验记录。
+
+    使用场景：记录实验中的关键发现、成功经验、失败教训，供后续阶段和其他 idea 参考。
+    返回：添加确认消息。tags 用逗号分隔多个标签。
+    示例：add_experience(idea_id="T001-I001", phase="experiment", type="failure", summary="学习率 1e-3 导致训练发散", tags="hyperparameter,learning_rate")
+    """
     idea_id: str = Field(default="", description="关联的 Idea ID")
     phase: str = Field(default="", description="所属阶段")
     type: str = Field(default="", description="类型: insight/success/failure/observation")
@@ -204,13 +259,23 @@ class AddExperienceParams(ToolParamsBase):
 # ── paper_manager ─────────────────────────────────────────────
 
 class DownloadPaperParams(ToolParamsBase):
-    """下载论文 PDF 并用 MinerU 解析为 Markdown，支持后续按章节阅读"""
+    """下载论文 PDF 并用 MinerU 解析为 Markdown，支持后续按章节阅读。
+
+    使用场景：需要深入阅读某篇论文时，先下载解析，再用 read_paper_section 按章节阅读。
+    返回：下载状态和解析后的存储路径；已下载的论文会跳过重复下载。
+    示例：download_paper(paper_id="W2741809807", title="Attention Is All You Need")
+    """
     paper_id: str = Field(description="论文 ID（OpenAlex W* / arXiv ID）")
     title: str = Field(default="", description="论文标题（可选，用于索引）")
 
 
 class ReadPaperSectionParams(ToolParamsBase):
-    """按需阅读论文的指定章节（如 method, experiment）或按关键词搜索论文内容。为空则返回结构概览。"""
+    """按需阅读论文的指定章节（如 method, experiment）或按关键词搜索论文内容。
+
+    使用场景：下载论文后按需阅读特定章节，避免一次性读取全文。section 为空时返回论文结构概览（含所有章节标题）。
+    返回：指定章节的 Markdown 文本；或结构概览列表。
+    示例：read_paper_section(paper_id="W2741809807", section="method")
+    """
     paper_id: str = Field(description="论文 ID（OpenAlex W* / arXiv ID）")
     section: str = Field(default="", description="章节名（abstract/introduction/method/experiment/conclusion）或搜索关键词，为空返回概览")
 
@@ -306,13 +371,23 @@ class SuggestCombinationsParams(ToolParamsBase):
 # ── vlm_analysis ──────────────────────────────────────────────
 
 class AnalyzeImageParams(ToolParamsBase):
-    """发送图片到 VLM 进行分析（实验结果可视化、曲线图等）"""
+    """发送图片到 VLM 进行分析（实验结果可视化、曲线图等）。
+
+    使用场景：分析实验生成的可视化图片，如 loss 曲线、指标对比图、预测结果图等。
+    返回：VLM 生成的分析文本，包含图中趋势、异常点、关键数值的解读。
+    示例：analyze_image(image_path="results/S01_quick_test/V1/plots/loss_curve.png", question="分析训练损失的收敛趋势")
+    """
     image_path: str = Field(description="图片文件路径")
     question: str = Field(default="请分析这张图片中展示的实验结果。", description="分析问题/指令")
 
 
 class AnalyzePlotsParams(ToolParamsBase):
-    """分析目录下的所有实验结果图片"""
+    """批量分析目录下的所有实验结果图片。
+
+    使用场景：一次性分析某个实验步骤的所有可视化结果，省去逐张调用 analyze_image。
+    返回：每张图片的分析汇总文本，按文件名排序。
+    示例：analyze_plots_dir(plots_dir="results/S01_quick_test/V1/plots", context="quick test 使用了默认超参数")
+    """
     plots_dir: str = Field(description="图片目录路径")
     context: str = Field(default="", description="额外的实验上下文信息")
 

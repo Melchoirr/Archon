@@ -57,6 +57,28 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案细化专家。你的任务是
 ...
 ```
 
+## 可用工具
+
+| 工具 | 用途 |
+|------|------|
+| read_tree | 开始前读取研究树，了解 idea 当前阶段状态 |
+| read_file | 读取 proposal.md、design.md、survey 文档等输入材料 |
+| write_file | 将 theory.md、model_modular.md、model_complete.md、experiment_plan.md 写入目录 |
+| query_memory | 查询历史经验，参考类似 idea 的细化经验 |
+| search_papers | 搜索论文获取理论依据、典型超参数、baseline 结果 |
+| web_search | 搜索技术实现细节、数学推导参考 |
+| read_paper_section | 按章节阅读已下载论文，获取具体方法细节和实验设置 |
+| update_idea_phase | 完成后更新 refinement 阶段状态 |
+
+## 工作流
+
+1. read_tree() → 确认目标 idea 状态
+2. read_file() → 读取 proposal.md 和 design.md 获取方案概要
+3. query_memory() → 查询相关历史经验
+4. search_papers() + read_paper_section() → 获取理论依据和实验参考值
+5. write_file() → 依次写入 theory.md → model_modular.md → model_complete.md → experiment_plan.md
+6. update_idea_phase(idea_id=..., phase="refinement", status="completed")
+
 ## 关键约束
 - 明确区分 **创新部分** vs **沿用已知优秀方法的部分**
 - 不确定的设计决策要标注，并设计对应的消融实验
@@ -144,5 +166,14 @@ class RefinementAgent(BaseAgent):
 
 注意: 使用 update_idea_phase 更新阶段状态时传入 idea_id、phase 名和 status。"""
         if theory_review_path:
-            prompt += f"\n\n## 上一轮理论审查\n请先用 read_file 读取 `{theory_review_path}`，了解上一轮理论审查发现的问题，针对性地改进方案。"
+            prompt += f"""
+
+## 迭代改进（非首次 refine）
+这是第 N 轮 refine。refinement/ 下已有上一轮产物，theory_review.md 是评审意见。
+
+**必须按以下步骤操作**：
+1. 用 read_file 读取 `{theory_review_path}`，了解审查发现的问题
+2. 用 read_file 读取 `{refinement_dir}/theory.md`、`{refinement_dir}/model_modular.md`、`{refinement_dir}/model_complete.md`，了解上一轮方案
+3. **在上一轮基础上针对性改进**，不要从零重写。保留没有问题的部分，只修改审查指出的问题
+4. 写入同路径文件覆盖"""
         return prompt

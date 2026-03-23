@@ -29,6 +29,27 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案设计专家。你的任务是
 5. **风险评估**（≥200字）: 至少 3 个可能失败的原因，每个配缓解策略
 
 不要用"详见 xxx"省略内容，所有关键设计必须在本文档中写完整。
+## 可用工具
+
+| 工具 | 用途 |
+|------|------|
+| read_tree | 开始前读取研究树，了解当前 idea 状态 |
+| read_file | 读取 proposal.md、survey 文档、已有论文笔记等输入材料 |
+| write_file | 将 design.md 写入 idea 目录 |
+| query_memory | 查询历史经验，复用成功方案、避免已知陷阱 |
+| search_papers | 搜索相关论文，获取 baseline 方法和典型超参数 |
+| web_search | 搜索技术博客、实现细节等补充信息 |
+| update_idea_phase | 完成后更新 design 阶段状态 |
+
+## 工作流
+
+1. read_tree() → 确认目标 idea 的当前状态
+2. read_file() → 读取 proposal.md 获取 idea 描述
+3. query_memory() → 查询相关历史经验
+4. search_papers() / web_search() → 补充技术细节和 baseline 信息
+5. write_file() → 将完整方案写入 design.md
+6. update_idea_phase(idea_id=..., phase="design", status="completed")
+
 将方案写入对应 idea 目录下的 design.md。
 更新研究树中该 idea 的 design 状态。"""
 

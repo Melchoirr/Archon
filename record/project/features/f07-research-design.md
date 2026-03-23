@@ -67,6 +67,11 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-23 23:50 — 多轮 refine 迭代改进而非从零重写
+- **目的**：多轮 refine 时 Agent 不知道上一轮写了什么，每次从零重写导致迭代无效
+- **改动**：`refinement_agent.py` `build_prompt()` 当 theory_review_path 存在时，prompt 指示 Agent 先读取上一轮 theory.md / model_*.md，在此基础上针对性改进
+- **验证**：未测试
+
 ### [修改] 2026-03-23 — RefinementAgent feedback 改为 theory_review_path (`ca9682c`)
 - **目的**：去掉 feedback 字符串，让 agent 自行读取完整的 theory_review.md
 - **改动**：`refinement_agent.py` `build_prompt()` 参数 `feedback` → `theory_review_path`，prompt 指示 agent 用 read_file 读取

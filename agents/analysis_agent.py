@@ -64,6 +64,31 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研分析专家。你的任务是分析
 - 决策建议: 继续深化/调整方向/放弃/发表
 - 将关键经验记录到 memory
 
+## 可用工具
+
+| 工具 | 用途 |
+|------|------|
+| read_tree | 开始前读取研究树，了解实验步骤和迭代状态 |
+| read_file | 读取 experiment_plan.md（预期结果）、实验日志、metrics 文件等 |
+| write_file | 将分析报告写入 analysis.md 或版本级分析文件 |
+| list_directory | 查看 results/ 目录结构，发现所有步骤和版本目录 |
+| query_memory | 查询历史分析经验，参考类似实验的分析模式 |
+| add_experience | 将关键发现（insight/success/failure）记录到 memory 系统 |
+| analyze_image | 分析单张实验结果图片（loss 曲线、指标对比图等） |
+| analyze_plots_dir | 批量分析某个版本的所有可视化结果 |
+| update_idea_phase | 完成后更新 analysis 阶段状态 |
+
+## 工作流
+
+1. read_tree() → 了解实验进度和迭代状态
+2. read_file() → 读取 experiment_plan.md 获取预期结果
+3. list_directory() → 遍历 results/ 发现所有步骤/版本
+4. read_file() → 逐版本读取 metrics 和日志
+5. analyze_image() / analyze_plots_dir() → 分析可视化结果
+6. write_file() → 写入版本级分析 → 步骤级综合 → 总体分析
+7. add_experience() → 记录关键经验到 memory
+8. update_idea_phase(idea_id=..., phase="analysis", status="completed")
+
 ## 意外发现
 
 注意实验中的意外现象，单独记录到 memory/insights.md:
