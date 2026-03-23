@@ -67,7 +67,7 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
-### [修复] 2026-03-23 23:50 — 多轮 refine 迭代改进而非从零重写
+### [修复] 2026-03-23 23:50 — 多轮 refine 迭代改进而非从零重写 (`5416811`)
 - **目的**：多轮 refine 时 Agent 不知道上一轮写了什么，每次从零重写导致迭代无效
 - **改动**：`refinement_agent.py` `build_prompt()` 当 theory_review_path 存在时，prompt 指示 Agent 先读取上一轮 theory.md / model_*.md，在此基础上针对性改进
 - **验证**：未测试
