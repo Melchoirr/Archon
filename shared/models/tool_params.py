@@ -36,24 +36,44 @@ class ToolParamsBase(BaseModel):
 # ── file_ops ──────────────────────────────────────────────────
 
 class ReadFileParams(ToolParamsBase):
-    """读取指定路径的文件内容"""
+    """读取指定路径的文件内容。
+
+    使用场景：阅读 proposal.md、design.md、实验结果文件、代码文件等任何文本文件。
+    返回：文件全文字符串；文件不存在时返回错误信息。
+    示例：read_file(path="ideas/idea_001_xxx/proposal.md")
+    """
     path: str = Field(description="文件路径")
 
 
 class WriteFileParams(ToolParamsBase):
-    """将内容写入指定路径的文件（覆盖已有内容）"""
+    """将内容写入指定路径的文件（覆盖已有内容）。
+
+    使用场景：创建或覆盖写入 design.md、theory.md、analysis.md、代码文件等。
+    返回：写入确认消息；自动创建不存在的父目录。
+    示例：write_file(path="ideas/idea_001_xxx/design.md", content="# 方案设计\n...")
+    """
     path: str = Field(description="文件路径")
     content: str = Field(description="要写入的内容")
 
 
 class AppendFileParams(ToolParamsBase):
-    """将内容追加到文件末尾"""
+    """将内容追加到文件末尾。
+
+    使用场景：向已有文件追加内容，如在日志文件中追加记录、在 markdown 末尾补充章节。
+    返回：追加确认消息；文件不存在时自动创建。
+    示例：append_file(path="ideas/idea_001_xxx/notes.md", content="\n## 新发现\n...")
+    """
     path: str = Field(description="文件路径")
     content: str = Field(description="要追加的内容")
 
 
 class ListDirectoryParams(ToolParamsBase):
-    """列出指定目录下的文件和子目录"""
+    """列出指定目录下的文件和子目录。
+
+    使用场景：查看目录结构，如查看 idea 目录下有哪些文件、results/ 下有哪些步骤目录。
+    返回：换行分隔的文件名和子目录名列表。
+    示例：list_directory(path="ideas/idea_001_xxx/results")
+    """
     path: str = Field(default=".", description="目录路径")
 
 

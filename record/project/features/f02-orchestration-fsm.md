@@ -76,7 +76,7 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-23 — refine feedback 改为文件路径方式
+### [修改] 2026-03-23 — refine feedback 改为文件路径方式 (`ca9682c`)
 - **目的**：去掉 feedback 字符串传递，改为让 RefinementAgent 自行读取 theory_review.md 获取完整审查信息
 - **改动**：`orchestrator.py` `phase_refine()` 移除 feedback 参数，改为检测 theory_review.md 是否存在并传路径；`refinement_agent.py` `build_prompt()` 移除 feedback 参数，改为 theory_review_path；`fsm_engine.py` refine 调用不再传 feedback
 - **验证**：import 通过

@@ -67,7 +67,7 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-23 — RefinementAgent feedback 改为 theory_review_path
+### [修改] 2026-03-23 — RefinementAgent feedback 改为 theory_review_path (`ca9682c`)
 - **目的**：去掉 feedback 字符串，让 agent 自行读取完整的 theory_review.md
 - **改动**：`refinement_agent.py` `build_prompt()` 参数 `feedback` → `theory_review_path`，prompt 指示 agent 用 read_file 读取
 - **验证**：import 通过
