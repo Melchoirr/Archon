@@ -6,11 +6,11 @@
 ## 核心文件
 - `agents/experiment_agent.py:110-149` — `ExperimentAgent.__init__()`，11 个工具，40 次迭代
 - `agents/experiment_agent.py:150-159` — `_load_infra_template()`，加载基础设施模板
-- `agents/experiment_agent.py:161-187` — `build_code_prompt()`，代码编写 prompt
+- `agents/experiment_agent.py:161-194` — `build_code_prompt()`，代码编写 prompt（含 debug_report_path）
 - `agents/experiment_agent.py:189-225` — `build_experiment_prompt()`，实验运行 prompt
 - `agents/experiment_agent.py:24-107` — system prompt（PM 角色 + 8 项规范）
 - `agents/debug_agent.py:54-76` — `DebugAgent.__init__()`，6 个工具，35 次迭代
-- `agents/debug_agent.py:77-105` — `build_prompt()`，调试 prompt
+- `agents/debug_agent.py:77-112` — `build_prompt()`，调试 prompt（analysis_path + debug_report_path）
 - `tools/claude_code.py:42-75` — `claude_write_module()`，委托 Claude Code 写模块
 - `tools/claude_code.py:77-102` — `claude_fix_error()`，修 bug
 - `tools/claude_code.py:104-121` — `claude_review()`，代码审查
@@ -70,6 +70,11 @@ python run_research.py experiment --idea T001-I001 --step S01
 （暂无）
 
 ## 变化
+### [修改] 2026-03-24 00:13 — DebugAgent/ExperimentAgent 用文档路径替代 feedback 字符串
+- **目的**：analyze→debug、debug→debug、debug→code 回退时，下游 Agent 信息不足。改为传文档路径让 Agent 自行读取完整内容
+- **改动**：`debug_agent.py` `build_prompt()` 去掉 `feedback`，增加 `analysis_path` + `debug_report_path`；`experiment_agent.py` `build_code_prompt()` 增加 `debug_report_path`，refactor 为先赋值 prompt 变量再 return
+- **验证**：import 通过
+
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 - **目的**：实现代码编写、调试、实验运行
 - **改动**：新增 experiment_agent.py + debug_agent.py + claude_code.py + venv_manager.py + bash_exec.py

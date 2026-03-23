@@ -41,7 +41,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F02 — 编排引擎与 FSM 状态机 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/orchestrator.py`, `agents/fsm_engine.py`
 - **上游**：F01 / **下游**：F03-F12
-- **最后变更**：2026-03-23 23:43
+- **最后变更**：2026-03-24 00:13
 
 <details><summary>功能概要</summary>
 
@@ -121,7 +121,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F07 — 研究设计 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/elaborate_agent.py`, `agents/refinement_agent.py`, `agents/design_agent.py`, `agents/theory_check_agent.py`
 - **上游**：F01, F05, F06 / **下游**：F04, F08
-- **最后变更**：2026-03-24 01:20
+- **最后变更**：2026-03-24 00:13
 
 <details><summary>功能概要</summary>
 
@@ -137,7 +137,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F08 — 实验执行与调试 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/experiment_agent.py`, `agents/debug_agent.py`, `tools/claude_code.py`, `tools/venv_manager.py`
 - **上游**：F07, F02 / **下游**：F09, F04
-- **最后变更**：2026-03-17 10:38
+- **最后变更**：2026-03-24 00:13
 
 <details><summary>功能概要</summary>
 
