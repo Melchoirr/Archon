@@ -4,8 +4,8 @@
 - **实现状态**：✅已完成
 
 ## 核心文件
-- `agents/ideation_agent.py:78-102` — `IdeationAgent.__init__()`，10 个工具，20 次迭代
-- `agents/ideation_agent.py:103-137` — `build_prompt()`，组装 ideation prompt
+- `agents/ideation_agent.py:79-108` — `IdeationAgent.__init__(topic_dir)`，10 个工具，20 次迭代，`partial` 绑定 topic_dir 到 idea_graph 工具
+- `agents/ideation_agent.py:110-144` — `build_prompt()`，组装 ideation prompt
 - `agents/ideation_agent.py:19-75` — system prompt（3+ 搜索/idea、去重、原子性、≥800 字符）
 - `tools/idea_scorer.py:62-88` — `extract_search_queries()`，LLM 提取搜索查询
 - `tools/idea_scorer.py:89-119` — `search_prior_work()`，去重论文搜索
@@ -66,6 +66,17 @@ python run_research.py status --topic T001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-23 — idea_graph 绑定 topic_dir
+<details><summary>详情</summary>
+
+**计划**：修复 idea_graph 工具的 topic_dir 默认值为 "."，导致 idea_graph.yaml 写到项目根目录而非 topic 目录
+**代码修改**：IdeationAgent 新增 topic_dir 参数，用 `functools.partial` 绑定 `add_idea_relationship` 和 `get_idea_graph` 的 topic_dir；orchestrator.py 传入 `self.topic_dir`
+**测试**：
+| 方法 | 结果 | 备注 |
+|------|------|------|
+
+</details>
+
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 <details><summary>详情</summary>
 

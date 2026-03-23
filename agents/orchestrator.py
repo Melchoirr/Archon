@@ -190,6 +190,11 @@ class ResearchOrchestrator:
         progress = self._load_survey_progress(progress_path)
         paper_list_path = str(self.paths.paper_list_yaml)
 
+        # 第二轮及以后：重置 progress，重新搜索和综合
+        if round_num > 1:
+            progress = {}
+            self._save_survey_progress(progress, progress_path)
+
         def completed(step_key):
             return progress.get(step_key) == "completed"
 
@@ -674,12 +679,14 @@ class ResearchOrchestrator:
         repos_summary_path = str(self.paths.repos_summary_md)
         repos_exists = os.path.exists(repos_summary_path)
 
+        context_path = str(self.paths.topic_dir / "context.md")
         prompt = build_synthesis_prompt(
             summaries_dir=summaries_dir,
             repos_summary_path=repos_summary_path,
             repos_exists=repos_exists,
             survey_dir=survey_dir,
             baselines_path=baselines_path,
+            context_path=context_path if os.path.exists(context_path) else None,
             eda_report_path=str(self.paths.eda_report_md),
             eda_exists=os.path.exists(str(self.paths.eda_report_md)),
             datasets_path=str(self.paths.datasets_md),
@@ -691,9 +698,10 @@ class ResearchOrchestrator:
 
     def _generate_topic_index(self, paper_ids: list, survey_dir: str):
         """生成 topic 级 index.yaml"""
-        from tools.paper_manager import _load_index, SUMMARIES_DIR
+        from tools.paper_manager import _load_index, _get_paths
 
         global_index = _load_index()
+        summaries_dir = _get_paths()["summaries_dir"]
         topic_papers = []
 
         for item in paper_ids:
@@ -702,7 +710,7 @@ class ResearchOrchestrator:
             entry = {
                 "paper_id": pid,
                 "title": item.get("title", global_entry.get("title", "")),
-                "summary_path": os.path.join(SUMMARIES_DIR, item["file"]),
+                "summary_path": os.path.join(summaries_dir, item["file"]),
             }
             if global_entry.get("pdf_path"):
                 entry["pdf_path"] = global_entry["pdf_path"]
@@ -722,7 +730,8 @@ class ResearchOrchestrator:
         self._log_phase_start("ideation")
 
         agent = IdeationAgent(self.config_path,
-                              allowed_dirs=[str(self.paths.ideas_dir), str(self.paths.topic_dir)])
+                              allowed_dirs=[str(self.paths.ideas_dir), str(self.paths.topic_dir)],
+                              topic_dir=self.topic_dir or ".")
 
         # 收集上下文
         context = ""
@@ -1302,8 +1311,8 @@ class ResearchOrchestrator:
             try:
                 action = input(f"\n{phase} 完成。[继续(c) / 退出(q)]: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
-                print(f"\n  stdin 不可用，自动继续")
-                action = "c"
+                print(f"\n  中断，退出")
+                break
             if action == "q":
                 break
 

@@ -73,6 +73,17 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-23 — phase_ideation 传入 topic_dir
+<details><summary>详情</summary>
+
+**计划**：确保 IdeationAgent 的 idea_graph 工具写入正确的 topic 目录
+**代码修改**：orchestrator.py `phase_ideation()` 创建 IdeationAgent 时传入 `topic_dir=self.topic_dir`
+**测试**：
+| 方法 | 结果 | 备注 |
+|------|------|------|
+
+</details>
+
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 <details><summary>详情</summary>
 

@@ -6,6 +6,7 @@ from tools.research_tree import add_idea_to_tree, read_tree
 from tools.memory import query_memory
 from tools.web_search import web_search
 from tools.openalex import search_papers
+from functools import partial
 from tools.idea_graph import (
     add_idea_relationship, get_idea_graph,
 )
@@ -76,7 +77,8 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研创意专家。你的任务是基于
 
 
 class IdeationAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None):
+    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None,
+                 topic_dir: str = "."):
         tc = load_topic_config(config_path)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
             topic_title=tc.topic.title,
@@ -97,8 +99,13 @@ class IdeationAgent(BaseAgent):
         self.register_tool("query_memory", query_memory, QueryMemoryParams)
         self.register_tool("web_search", web_search, WebSearchParams)
         self.register_tool("search_papers", search_papers, SearchPapersParams)
-        self.register_tool("add_idea_relationship", add_idea_relationship, AddRelationshipParams)
-        self.register_tool("get_idea_graph", get_idea_graph, GetGraphParams)
+        # 绑定 topic_dir，Agent 无需手动传递
+        self.register_tool("add_idea_relationship",
+                           partial(add_idea_relationship, topic_dir=topic_dir),
+                           AddRelationshipParams)
+        self.register_tool("get_idea_graph",
+                           partial(get_idea_graph, topic_dir=topic_dir),
+                           GetGraphParams)
 
     def build_prompt(self, *, topic_title: str, survey: str = "",
                      baselines: str = "", datasets_md: str = "",
@@ -110,7 +117,7 @@ class IdeationAgent(BaseAgent):
 {topic_title}
 
 ## 综述
-{survey[:40000]}
+{survey[:80000]}
 
 ## Baselines
 {baselines[:20000]}
