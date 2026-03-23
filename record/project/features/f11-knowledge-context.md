@@ -87,12 +87,6 @@ from tools.knowledge_base import search_knowledge_base
 
 ## 变化
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
-<details><summary>详情</summary>
-
-**计划**：实现知识库、经验日志、上下文管理、embedding
-**代码修改**：新增 knowledge_base.py + memory.py + context_manager.py + embedding.py + phase_logger.py
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：实现知识库、经验日志、上下文管理、embedding
+- **改动**：新增 knowledge_base.py + memory.py + context_manager.py + embedding.py + phase_logger.py
+- **验证**：未测试

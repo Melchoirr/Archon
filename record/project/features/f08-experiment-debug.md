@@ -71,23 +71,11 @@ python run_research.py experiment --idea T001-I001 --step S01
 
 ## 变化
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
-<details><summary>详情</summary>
-
-**计划**：实现代码编写、调试、实验运行
-**代码修改**：新增 experiment_agent.py + debug_agent.py + claude_code.py + venv_manager.py + bash_exec.py
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：实现代码编写、调试、实验运行
+- **改动**：新增 experiment_agent.py + debug_agent.py + claude_code.py + venv_manager.py + bash_exec.py
+- **验证**：未测试
 
 ### [重构] 2026-03-17 10:38 — Venv 隔离 + EDA 环境支持 (`b6b5ff6`)
-<details><summary>详情</summary>
-
-**计划**：每 idea 独立 venv，支持 uv 快速安装和 pip mirror
-**代码修改**：新增 venv_manager.py，experiment_agent.py 集成 venv
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：每 idea 独立 venv，支持 uv 快速安装和 pip mirror
+- **改动**：新增 venv_manager.py，experiment_agent.py 集成 venv
+- **验证**：未测试

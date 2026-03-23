@@ -70,12 +70,6 @@ python run_research.py conclude --idea T001-I001
 
 ## 变化
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
-<details><summary>详情</summary>
-
-**计划**：实现实验分析 + 客观结论
-**代码修改**：新增 analysis_agent.py + conclusion_agent.py + vlm_analysis.py
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：实现实验分析 + 客观结论
+- **改动**：新增 analysis_agent.py + conclusion_agent.py + vlm_analysis.py
+- **验证**：未测试

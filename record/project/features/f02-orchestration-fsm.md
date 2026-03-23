@@ -74,45 +74,21 @@ python run_research.py elaborate --topic T001
 
 ## 变化
 ### [修复] 2026-03-23 — phase_ideation 传入 topic_dir (`d081a7c`)
-<details><summary>详情</summary>
-
-**计划**：确保 IdeationAgent 的 idea_graph 工具写入正确的 topic 目录
-**代码修改**：orchestrator.py `phase_ideation()` 创建 IdeationAgent 时传入 `topic_dir=self.topic_dir`
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：确保 IdeationAgent 的 idea_graph 工具写入正确的 topic 目录
+- **改动**：orchestrator.py `phase_ideation()` 创建 IdeationAgent 时传入 `topic_dir=self.topic_dir`
+- **验证**：未测试
 
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
-<details><summary>详情</summary>
-
-**计划**：实现编排引擎和 FSM 状态机
-**代码修改**：新增 orchestrator.py + fsm_engine.py
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：实现编排引擎和 FSM 状态机
+- **改动**：新增 orchestrator.py + fsm_engine.py
+- **验证**：未测试
 
 ### [重构] 2026-03-17 10:38 — FSM 引擎重构 + 评估器体系 (`b6b5ff6`)
-<details><summary>详情</summary>
-
-**计划**：拆分评估逻辑为独立评估器，新增 venv 隔离和 EDA 支持
-**代码修改**：fsm_engine.py 重构路由逻辑，引入 3 个评估器
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：拆分评估逻辑为独立评估器，新增 venv 隔离和 EDA 支持
+- **改动**：fsm_engine.py 重构路由逻辑，引入 3 个评估器
+- **验证**：未测试
 
 ### [修复] 2026-03-21 11:07 — FSM 跨状态回退死循环修复 (`f4aaf7a`)
-<details><summary>详情</summary>
-
-**计划**：修复 retry_counts 无条件递增导致的死循环 + step() 方法补齐
-**代码修改**：fsm_engine.py 修正 retry_counts 逻辑，补齐 step() 支持单步执行
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：修复 retry_counts 无条件递增导致的死循环 + step() 方法补齐
+- **改动**：fsm_engine.py 修正 retry_counts 逻辑，补齐 step() 支持单步执行
+- **验证**：未测试

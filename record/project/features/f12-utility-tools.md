@@ -76,12 +76,6 @@ print(web_search("time series forecasting", max_results=3))
 
 ## 变化
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
-<details><summary>详情</summary>
-
-**计划**：实现通用工具集
-**代码修改**：新增 file_ops.py + web_search.py + github_repo.py + research_tree.py + config_updater.py
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：实现通用工具集
+- **改动**：新增 file_ops.py + web_search.py + github_repo.py + research_tree.py + config_updater.py
+- **验证**：未测试

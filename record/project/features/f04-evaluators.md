@@ -59,12 +59,6 @@ result = evaluator.evaluate({"analysis_md": "...", "metrics_json": "..."})
 
 ## 变化
 ### [实现] 2026-03-17 10:38 — 评估器体系初始实现 (`b6b5ff6`)
-<details><summary>详情</summary>
-
-**计划**：从 FSM 引擎中拆分评估逻辑为独立评估器
-**代码修改**：新增 evaluators/ 目录（base + 3 个专用评估器）
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：从 FSM 引擎中拆分评估逻辑为独立评估器
+- **改动**：新增 evaluators/ 目录（base + 3 个专用评估器）
+- **验证**：未测试

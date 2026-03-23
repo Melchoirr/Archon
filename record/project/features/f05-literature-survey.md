@@ -77,12 +77,6 @@ python run_research.py survey --topic T001 --step 4
 
 ## 变化
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
-<details><summary>详情</summary>
-
-**计划**：实现 5 步文献调研流水线
-**代码修改**：新增 survey_helpers.py + openalex.py + paper_manager.py + data_agent.py
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：实现 5 步文献调研流水线
+- **改动**：新增 survey_helpers.py + openalex.py + paper_manager.py + data_agent.py
+- **验证**：未测试

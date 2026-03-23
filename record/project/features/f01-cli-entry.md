@@ -64,34 +64,16 @@ python run_research.py status
 
 ## 变化
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
-<details><summary>详情</summary>
-
-**计划**：实现 CLI 入口和项目初始化
-**代码修改**：新增 run_research.py（800 行），包含 15 个子命令、topic 解析、环境验证
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：实现 CLI 入口和项目初始化
+- **改动**：新增 run_research.py（800 行），包含 15 个子命令、topic 解析、环境验证
+- **验证**：未测试
 
 ### [修改] 2026-03-17 10:38 — FSM 模式与 topic md 自动初始化 (`b6b5ff6`)
-<details><summary>详情</summary>
-
-**计划**：新增 FSM 运行模式，支持 `fsm run --topic mean_reversion.md` 自动初始化
-**代码修改**：新增 cmd_fsm()、_get_fsm()，支持 --force/--from/--feedback 参数
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：新增 FSM 运行模式，支持 `fsm run --topic mean_reversion.md` 自动初始化
+- **改动**：新增 cmd_fsm()、_get_fsm()，支持 --force/--from/--feedback 参数
+- **验证**：未测试
 
 ### [修改] 2026-03-17 10:46 — 移除硬编码 author 字段 (`68c6db0`)
-<details><summary>详情</summary>
-
-**计划**：从 config.yaml 生成逻辑中移除硬编码的 author 字段
-**代码修改**：cmd_init() 中 config dict 不再包含 project.author
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：从 config.yaml 生成逻辑中移除硬编码的 author 字段
+- **改动**：cmd_init() 中 config dict 不再包含 project.author
+- **验证**：未测试

@@ -77,34 +77,16 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 
 ## 变化
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
-<details><summary>详情</summary>
-
-**计划**：实现类型安全基础设施
-**代码修改**：新增 shared/ 目录，含 paths.py + path_guard.py + models/ + templates/
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：实现类型安全基础设施
+- **改动**：新增 shared/ 目录，含 paths.py + path_guard.py + models/ + templates/
+- **验证**：未测试
 
 ### [重构] 2026-03-17 10:38 — FSM 模型 + 评估器决策模型 (`b6b5ff6`)
-<details><summary>详情</summary>
-
-**计划**：新增 FSM 状态和决策 Pydantic 模型
-**代码修改**：新增 shared/models/fsm.py
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：新增 FSM 状态和决策 Pydantic 模型
+- **改动**：新增 shared/models/fsm.py
+- **验证**：未测试
 
 ### [修改] 2026-03-17 10:46 — 移除 author 配置字段 (`68c6db0`)
-<details><summary>详情</summary>
-
-**计划**：TopicConfig 移除硬编码 author 字段
-**代码修改**：config.py 中 ProjectSection 不再包含 author
-**测试**：
-| 方法 | 结果 | 备注 |
-|------|------|------|
-
-</details>
+- **目的**：TopicConfig 移除硬编码 author 字段
+- **改动**：config.py 中 ProjectSection 不再包含 author
+- **验证**：未测试
