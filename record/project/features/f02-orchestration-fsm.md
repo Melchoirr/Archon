@@ -76,7 +76,7 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [修复] 2026-03-23 — FSM retry_count 递增错误 + theory_check→refine 缺少用户确认
+### [修复] 2026-03-23 — FSM retry_count 递增错误 + theory_check→refine 缺少用户确认 (`069d579`)
 - **目的**：修复 theory_check↔refine 死循环：retry_count 递增了 next_state 而非 current_state 导致上限不生效；theory_check→refine 不在 USER_CONFIRM_TRANSITIONS 中导致自动循环无干预
 - **改动**：`fsm_engine.py` 行 201+256 `retry_counts[next_state]` → `retry_counts[state]`；USER_CONFIRM_TRANSITIONS 新增 `("theory_check", "refine")`
 - **验证**：未测试
