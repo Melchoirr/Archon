@@ -76,7 +76,7 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
-### [修改] 2026-03-23 — TheoryVerdict 增加 derivative + TheoryDecision 扩展字段
+### [修改] 2026-03-23 — TheoryVerdict 增加 derivative + TheoryDecision 扩展字段 (`535b346`)
 - **目的**：支持创新性评估、因果推演和跨 idea 去重
 - **改动**：`shared/models/fsm.py` TheoryVerdict 新增 `derivative` 枚举值；TheoryDecision 新增 6 个字段（novelty_assessment, novelty_score, differentiation, mechanism_reasoning, mechanism_confidence, similar_ideas_in_batch）
 - **验证**：`python -c "from shared.models.fsm import TheoryVerdict, TheoryDecision"` 通过

@@ -67,7 +67,7 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-23 — TheoryCheckAgent 增加创新性评估 + 因果推演审查步骤，RefinementAgent 支持 feedback
+### [修改] 2026-03-23 — TheoryCheckAgent 增加创新性评估 + 因果推演审查步骤，RefinementAgent 支持 feedback (`535b346`)
 - **目的**：理论审查增加创新性对比和因果推演维度；refine 回退时能接收上轮评估反馈
 - **改动**：`theory_check_agent.py` SYSTEM_PROMPT 增加步骤 5（创新性评估）和步骤 6（因果推演）；`refinement_agent.py` `build_prompt()` 增加 `feedback` 参数
 - **验证**：import 通过

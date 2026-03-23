@@ -74,7 +74,7 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-23 — FSM 路由增加 derivative verdict + 跨 idea 上下文 + refine feedback 传递
+### [修改] 2026-03-23 — FSM 路由增加 derivative verdict + 跨 idea 上下文 + refine feedback 传递 (`535b346`)
 - **目的**：支持 TheoryEvaluator 新增的 derivative 判定；为评估器提供同 batch 其他 idea 摘要；refine 回退时传递评估 feedback
 - **改动**：`fsm_engine.py` `_route_theory_check()` 增加 derivative 分支（→ refine 或 abandon）；`_gather_theory_eval_context()` 增加 other_ideas_summary；新增 `_gather_other_ideas_summary()` 方法；`_execute_idea_state("refine")` 传递 `feedback=idea_fsm.feedback`。`orchestrator.py` `phase_refine()` 签名增加 feedback 参数并传递给 RefinementAgent
 - **验证**：import 通过
