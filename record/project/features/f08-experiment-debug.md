@@ -1,51 +1,93 @@
 # [F08] 实验执行与调试
 
 ## 状态
-
 - **实现状态**：✅已完成
-- **核心文件**：
-  - `agents/experiment_agent.py` — `ExperimentAgent`，编排代码实现（任务分解→Claude Code 分发→基础设施管理）
-  - `agents/debug_agent.py` — `DebugAgent`，运行测试、修复 Bug、验证代码与设计文档一致性，产出 debug_report.md
-  - `agents/data_agent.py` — `DataAgent`，数据集下载 + EDA（探索性数据分析），venv 隔离运行
-  - `tools/claude_code.py` — `claude_write_module()`、`claude_fix_error()`、`claude_review()`，分发编码任务到 Claude Code CLI (-p)
-  - `tools/bash_exec.py` — `run_command()`，shell 命令执行 + 可选 venv 激活
-  - `tools/venv_manager.py` — `setup_idea_venv()`，per-idea venv 创建 + 依赖安装（支持 uv）
-- **功能描述**：代码实现全链路 — ExperimentAgent 分解编码任务并通过 Claude Code CLI 执行；DebugAgent 运行测试、修复错误、做完整性检查；DataAgent 管理数据集获取和 EDA。每个 idea 有独立 venv 避免依赖冲突。支持迭代实验循环（experiment_loop）。
-- **测试方法**：
-  ```bash
-  python run_research.py code --idea T001-I001
-  python run_research.py debug --idea T001-I001
-  python run_research.py experiment --idea T001-I001 --max-iter 3
-  ```
+
+## 核心文件
+- `agents/experiment_agent.py:110-149` — `ExperimentAgent.__init__()`，11 个工具，40 次迭代
+- `agents/experiment_agent.py:150-159` — `_load_infra_template()`，加载基础设施模板
+- `agents/experiment_agent.py:161-187` — `build_code_prompt()`，代码编写 prompt
+- `agents/experiment_agent.py:189-225` — `build_experiment_prompt()`，实验运行 prompt
+- `agents/experiment_agent.py:24-107` — system prompt（PM 角色 + 8 项规范）
+- `agents/debug_agent.py:54-76` — `DebugAgent.__init__()`，6 个工具，35 次迭代
+- `agents/debug_agent.py:77-105` — `build_prompt()`，调试 prompt
+- `tools/claude_code.py:42-75` — `claude_write_module()`，委托 Claude Code 写模块
+- `tools/claude_code.py:77-102` — `claude_fix_error()`，修 bug
+- `tools/claude_code.py:104-121` — `claude_review()`，代码审查
+- `tools/venv_manager.py:8-78` — `setup_idea_venv()`，创建隔离 venv（uv 优先）
+- `tools/bash_exec.py:1-27` — `run_command()`，执行 shell 命令
+
+## 功能描述
+代码编写、调试、实验运行三大能力：
+
+**ExperimentAgent（代码编写）**：PM 角色，Claude Code 作为程序员。分解任务 → 逐模块 `claude_write_module()` → structure.md + requirements.txt。8 项基础设施规范：YAML 配置、统一入口、Pydantic 校验、Trainer、Evaluator、Ablation、Bash 脚本、可视化。
+
+**ExperimentAgent（实验运行）**：在 venv 中执行实验步骤（S01→S02→...），支持多版本迭代。
+
+**DebugAgent**：运行测试 → 修 bug → 验证（最多 5 轮），输出 debug_report.md。
+
+**Venv 隔离**：uv（快）或 python -m venv，每 idea 独立 venv，支持 pip mirror。
+
+## 运行流程
+
+### 触发条件
+- `code --idea T001-I001` 或 FSM idea_state == "code"
+- `debug --idea T001-I001` 或 FSM idea_state == "debug"
+- `experiment --idea T001-I001` 或 FSM idea_state == "experiment"
+
+### 处理步骤（代码编写）
+1. **加载模板** — `_load_infra_template()` 读取基础设施规范
+2. **构建 prompt** — 组合设计文档 + 模板 + 参考代码
+3. **ReAct 循环**（40 迭代）— 分解任务 → `claude_write_module()` 逐模块实现
+4. **Venv 设置** — 创建环境 + 安装依赖
+
+### 处理步骤（调试）
+1. **DebugAgent**（35 迭代，6 工具）运行测试 → `claude_fix_error()` 修复 → 验证
+2. **输出** — debug_report.md，FSM 解析 verdict
+
+### 输出
+- 代码 → `ideas/*/src/`
+- 调试 → 修复后 src/ + debug_report.md
+- 实验 → `results/SXX_name/VN/`
+
+### 依赖关系
+- **上游**：F07（设计文档）、F02（FSM 触发）
+- **下游**：F09（分析依赖实验输出）、F04（DebugVerdict → FSM 路由）
+
+### 错误与边界情况
+- Claude Code 超时、输出截断到 8000 字符
+- debug 重试上限 6 次，needs_rewrite → 返回 code
+- venv 创建失败：fallback 系统 Python
+
+## 测试方法
+```bash
+python run_research.py code --idea T001-I001
+python run_research.py debug --idea T001-I001
+python run_research.py experiment --idea T001-I001 --step S01
+```
 
 ## 建议
-
 （暂无）
 
 ## 变化
-
-### [重构] 2026-03-17 10:38 — venv 隔离、EDA 环境支持 (`b6b5ff6`)
-
+### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 <details><summary>详情</summary>
 
-**计划**：增强 venv 管理，支持 EDA 环境
-**代码修改**：重构 venv_manager.py，更新 experiment_agent.py 和 data_agent.py
+**计划**：实现代码编写、调试、实验运行
+**代码修改**：新增 experiment_agent.py + debug_agent.py + claude_code.py + venv_manager.py + bash_exec.py
 **测试**：
 | 方法 | 结果 | 备注 |
 |------|------|------|
-| （暂无记录） | | |
 
 </details>
 
-### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
-
+### [重构] 2026-03-17 10:38 — Venv 隔离 + EDA 环境支持 (`b6b5ff6`)
 <details><summary>详情</summary>
 
-**计划**：建立实验执行与调试管道
-**代码修改**：新增 experiment_agent.py、debug_agent.py、data_agent.py、claude_code.py、bash_exec.py、venv_manager.py
+**计划**：每 idea 独立 venv，支持 uv 快速安装和 pip mirror
+**代码修改**：新增 venv_manager.py，experiment_agent.py 集成 venv
 **测试**：
 | 方法 | 结果 | 备注 |
 |------|------|------|
-| （暂无记录） | | |
 
 </details>

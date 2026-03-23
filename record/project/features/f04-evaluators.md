@@ -1,36 +1,70 @@
 # [F04] 评估器体系
 
 ## 状态
-
 - **实现状态**：✅已完成
-- **核心文件**：
-  - `agents/evaluators/base_evaluator.py` — `BaseEvaluator`，轻量评估器基类（单次 LLM 调用→YAML 输出）
-  - `agents/evaluators/analysis_evaluator.py` — `AnalysisEvaluator`，实验结果判定（success/tune/enrich/restructure/code_bug/need_literature/abandon）
-  - `agents/evaluators/theory_evaluator.py` — `TheoryEvaluator`，理论判定（sound/weak/flawed）
-  - `agents/evaluators/survey_evaluator.py` — `SurveyEvaluator`，调研覆盖度判定（sufficient/need_more）
-- **功能描述**：独立于工作 Agent 的评估层。不使用 ReAct 循环，而是单次 LLM 调用产出结构化 YAML 判定。评估结果被 FSM 引擎用于决定状态转换方向（前进/回退/abandon）。每个评估器有对应的 Pydantic Decision 模型确保输出格式。
-- **测试方法**：
-  ```python
-  from agents.evaluators.analysis_evaluator import AnalysisEvaluator
-  evaluator = AnalysisEvaluator()
-  # evaluator.evaluate(context_text) → AnalysisDecision
-  ```
+
+## 核心文件
+- `agents/evaluators/base_evaluator.py:15-93` — `BaseEvaluator`，轻量评估器基类（单次 LLM 调用，无工具）
+- `agents/evaluators/analysis_evaluator.py:44-90` — `AnalysisEvaluator`，verdict: success/tune/enrich/restructure/code_bug/need_literature/abandon
+- `agents/evaluators/theory_evaluator.py:35-67` — `TheoryEvaluator`，verdict: sound/weak/flawed
+- `agents/evaluators/survey_evaluator.py:41-73` — `SurveyEvaluator`，verdict: sufficient/need_more
+- `agents/evaluators/__init__.py:1-6` — 评估器包导出
+
+## 功能描述
+轻量级决策组件，不走 ReAct 循环，单次 LLM 调用返回结构化 YAML verdict。被 FSM 引擎用于路由状态转换。
+
+**BaseEvaluator**：`evaluate(context)` 单次 LLM 调用 + `_parse_yaml()` 解析（支持 ```yaml``` 块、直接 YAML、逐行 key:value fallback）
+
+**AnalysisEvaluator** 输出：verdict, confidence, metrics_vs_baseline, metrics_vs_expectation, expectations_met_ratio, failure_category, root_cause, iteration_trend, remaining_potential, next_action_detail, suggested_changes[]
+
+**TheoryEvaluator** 输出：verdict, issues[], supporting_papers[], contradicting_papers[], revision_suggestions[]
+
+**SurveyEvaluator** 输出：verdict, coverage_score (0-1), covered_areas[], gap_areas[], recommended_queries[]
+
+**关键数据结构**：`AnalysisDecision`(fsm.py:62)、`TheoryDecision`(fsm.py:77)、`SurveyDecision`(fsm.py:86)
+
+## 运行流程
+
+### 触发条件
+- AnalysisEvaluator：FSM analyze 完成后，`fsm_engine._route_analysis()` 调用
+- TheoryEvaluator：FSM theory_check 完成后，`fsm_engine._route_theory_check()` 调用
+- SurveyEvaluator：FSM survey 完成后，`fsm_engine._evaluate_topic_transition()` 调用
+
+### 处理步骤
+1. **构建 prompt** — `build_prompt(**context)` 组装评估上下文
+2. **LLM 调用** — `evaluate()` 单次调用 MiniMax，要求输出 YAML
+3. **解析结果** — `_parse_yaml()` 提取结构化数据
+4. **转换决策** — `parse_decision(raw)` → Pydantic 决策模型
+
+### 输出
+- 结构化决策对象（AnalysisDecision / TheoryDecision / SurveyDecision）
+
+### 依赖关系
+- **上游**：F02（FSM 调用）、F07/F09（Agent 产出物作为输入）
+- **下游**：F02（FSM 根据 verdict 决定转换方向）
+
+### 错误与边界情况
+- YAML 解析失败：fallback 逐行 key:value
+- 解析彻底失败：返回 `{"raw_output": text}`
+
+## 测试方法
+```python
+from agents.evaluators import AnalysisEvaluator
+evaluator = AnalysisEvaluator()
+result = evaluator.evaluate({"analysis_md": "...", "metrics_json": "..."})
+```
 
 ## 建议
-
 （暂无）
 
 ## 变化
-
-### [实现] 2026-03-17 10:38 — 从 FSM 引擎中独立 (`b6b5ff6`)
-
+### [实现] 2026-03-17 10:38 — 评估器体系初始实现 (`b6b5ff6`)
 <details><summary>详情</summary>
 
-**计划**：将评估逻辑从 FSM 引擎中分离，建立独立评估器体系
-**代码修改**：新增 agents/evaluators/ 目录，含 base_evaluator.py、analysis_evaluator.py、theory_evaluator.py、survey_evaluator.py
+**计划**：从 FSM 引擎中拆分评估逻辑为独立评估器
+**代码修改**：新增 evaluators/ 目录（base + 3 个专用评估器）
 **测试**：
 | 方法 | 结果 | 备注 |
 |------|------|------|
-| （暂无记录） | | |
 
 </details>
