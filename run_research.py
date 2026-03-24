@@ -631,9 +631,12 @@ def cmd_fsm(args):
             if topic_id_match:
                 args.topic = topic_id_match.group(1)
 
+        auto = getattr(args, "auto", False)
+
         if idea_ref:
             topic_id, idea_id = _parse_idea_ref(idea_ref)
             fsm = _get_fsm(args, topic_id)
+            fsm.auto = auto
 
             if force_state:
                 fsm.force_transition(idea_id, force_state,
@@ -645,6 +648,7 @@ def cmd_fsm(args):
             print(f"\nFSM 运行完成:\n{result}")
         else:
             fsm = _get_fsm(args)
+            fsm.auto = auto
             result = fsm.run_topic(start_state=from_state)
             print(f"\nFSM 运行完成:\n{result}")
         return
@@ -761,6 +765,8 @@ def main():
                            help="Force transition to state")
     fsm_run_p.add_argument("--feedback", type=str, default="",
                            help="Feedback for forced transition")
+    fsm_run_p.add_argument("--auto", action="store_true",
+                           help="全自动运行，跳过用户确认，由 MAX_RETRIES 控制上限")
 
     fsm_status_p = fsm_sub.add_parser("status", help="Show FSM status")
     fsm_status_p.add_argument("--topic", type=str, default=None, help="Topic ID")

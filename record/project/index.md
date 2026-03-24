@@ -25,7 +25,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F01 — CLI 入口与项目初始化 · ✅已完成 · 🟢在用
 - **核心文件**：`run_research.py`
 - **上游**：无 / **下游**：F02
-- **最后变更**：2026-03-17 10:46
+- **最后变更**：2026-03-24 10:57
 
 <details><summary>功能概要</summary>
 
@@ -41,12 +41,12 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F02 — 编排引擎与 FSM 状态机 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/orchestrator.py`, `agents/fsm_engine.py`
 - **上游**：F01 / **下游**：F03-F12
-- **最后变更**：2026-03-24 00:13
+- **最后变更**：2026-03-24 10:57
 
 <details><summary>功能概要</summary>
 
 **做什么**：Orchestrator 编排 12 个研究阶段，FSM 管理 Topic 级和 Idea 级状态转换
-**怎么做**：Orchestrator 创建 Agent + 组装上下文 + 执行 ReAct。FSM 维护状态快照（fsm_state.yaml），评估器驱动非线性转换，每状态有重试上限
+**怎么做**：Orchestrator 创建 Agent + 组装上下文 + 执行 ReAct。FSM 维护状态快照（fsm_state.yaml），评估器驱动非线性转换。支持 interactive（用户确认）/ auto（MAX_RETRIES 控制）两种模式
 **关键接口**：`ResearchOrchestrator.phase_*()`, `ResearchFSM.run_topic()`, `run_idea()`, `step()`, `force_transition()`
 **数据流**：CLI 命令 → Orchestrator 组装上下文 → Agent 执行 → 评估器判定 → FSM 状态转换
 

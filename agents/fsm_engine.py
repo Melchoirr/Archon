@@ -16,7 +16,7 @@ from shared.models.fsm import (
     AnalysisVerdict, TheoryVerdict, DebugVerdict, SurveyVerdict,
     AnalysisDecision, DebugDecision,
 )
-from shared.models.enums import PhaseState
+from shared.models.enums import PhaseState, IdeaStatus
 from shared.paths import PathManager
 from tools.research_tree import ResearchTreeService
 from tools.file_ops import read_file
@@ -79,10 +79,11 @@ class ResearchFSM:
     """有限状态机引擎，管理 topic 和 idea 级别的状态流转"""
 
     def __init__(self, paths: PathManager, tree_service: ResearchTreeService,
-                 config_path: str):
+                 config_path: str, auto: bool = False):
         self.paths = paths
         self.tree = tree_service
         self.config_path = config_path
+        self.auto = auto
         self.snapshot = self._load_snapshot()
 
         # 延迟初始化评估器（避免循环导入）
@@ -122,8 +123,8 @@ class ResearchFSM:
             # 评估转换
             next_state, decision = self._evaluate_topic_transition(state)
 
-            # 用户确认
-            if self._needs_user_confirm(state, next_state):
+            # 用户确认（仅 interactive 模式）
+            if not self.auto and self._needs_user_confirm(state, next_state):
                 next_state = self._prompt_user_topic(state, next_state, decision)
 
             # 用户选择退出：保留当前状态，不记录转换
@@ -177,12 +178,23 @@ class ResearchFSM:
             next_state, decision = self._evaluate_idea_transition(
                 state, idea_id, idea_fsm)
 
+            # auto 模式：施加重试上限
+            if self.auto and state in MAX_RETRIES:
+                retry_count = idea_fsm.retry_counts.get(state, 0)
+                if retry_count >= MAX_RETRIES[state]:
+                    if state == "analyze":
+                        met_ratio = decision.get("expectations_met_ratio", 0) \
+                            if isinstance(decision, dict) else 0
+                        next_state = "conclude" if met_ratio >= 0.3 else "abandoned"
+                    else:
+                        next_state = "abandoned"
+
             # 处理版本递增
             if state == "analyze" and next_state == "experiment":
                 idea_fsm.version += 1
 
-            # 用户确认
-            if self._needs_user_confirm(state, next_state):
+            # 用户确认（仅 interactive 模式）
+            if not self.auto and self._needs_user_confirm(state, next_state):
                 final = self._prompt_user_idea(
                     state, next_state, decision, idea_id, idea_fsm)
                 next_state = final
@@ -241,7 +253,18 @@ class ResearchFSM:
             self._mark_phase_completed(state, idea_id)
             next_state, decision = self._evaluate_idea_transition(state, idea_id, idea_fsm)
 
-            if self._needs_user_confirm(state, next_state):
+            # auto 模式：施加重试上限
+            if self.auto and state in MAX_RETRIES:
+                retry_count = idea_fsm.retry_counts.get(state, 0)
+                if retry_count >= MAX_RETRIES[state]:
+                    if state == "analyze":
+                        met_ratio = decision.get("expectations_met_ratio", 0) \
+                            if isinstance(decision, dict) else 0
+                        next_state = "conclude" if met_ratio >= 0.3 else "abandoned"
+                    else:
+                        next_state = "abandoned"
+
+            if not self.auto and self._needs_user_confirm(state, next_state):
                 next_state = self._prompt_user_idea(state, next_state, decision, idea_id, idea_fsm)
 
             if next_state == "_quit":
@@ -479,101 +502,56 @@ class ResearchFSM:
 
     def _route_analysis(self, idea_id: str, idea_fsm: IdeaFSMState,
                          retry_count: int) -> tuple[str, dict]:
-        """ANALYZE 后的路由决策"""
+        """ANALYZE 后的路由决策（纯质量评估，不含重试策略）"""
         ctx = self._gather_analysis_eval_context(idea_id, idea_fsm)
         raw = self.evaluators["analyze"].evaluate(ctx)
         decision = self.evaluators["analyze"].parse_decision(raw)
 
-        max_retries = MAX_RETRIES["experiment"]
         met_ratio = decision.expectations_met_ratio
-        trend = decision.iteration_trend
 
         if decision.verdict == AnalysisVerdict.success and met_ratio >= 0.7:
             return "conclude", raw
-
         if decision.verdict == AnalysisVerdict.tune:
-            if trend == "degrading" and retry_count >= 2:
-                return "refine", raw
-            if retry_count < max_retries:
-                return "experiment", raw
-            # 超限
-            if met_ratio >= 0.3:
-                return "conclude", raw
-            return "abandoned", raw
-
+            return "experiment", raw
         if decision.verdict == AnalysisVerdict.code_bug or \
            decision.failure_category == "implementation":
             return "debug", raw
-
         if decision.verdict in (AnalysisVerdict.enrich, AnalysisVerdict.restructure):
             return "refine", raw
-
         if decision.verdict == AnalysisVerdict.need_literature:
             return "deep_survey", raw
-
         if decision.verdict == AnalysisVerdict.abandon:
             return "abandoned", raw
-
-        # 兜底：超限判断
-        if retry_count >= max_retries:
-            if met_ratio >= 0.3:
-                return "conclude", raw
-            return "abandoned", raw
-
         return "experiment", raw
 
     def _route_theory_check(self, idea_id: str, idea_fsm: IdeaFSMState,
                              retry_count: int) -> tuple[str, dict]:
-        """THEORY_CHECK 后的路由决策"""
+        """THEORY_CHECK 后的路由决策（纯质量评估，不含重试策略）"""
         ctx = self._gather_theory_eval_context(idea_id)
         raw = self.evaluators["theory_check"].evaluate(ctx)
         decision = self.evaluators["theory_check"].parse_decision(raw)
 
         if decision.verdict == TheoryVerdict.sound:
             return "code_reference", raw
-
-        if decision.verdict == TheoryVerdict.weak:
-            max_retries = MAX_RETRIES["theory_check"]
-            if retry_count < max_retries:
-                return "refine", raw
-            return "abandoned", raw
-
-        if decision.verdict == TheoryVerdict.derivative:
-            max_retries = MAX_RETRIES["theory_check"]
-            if retry_count < max_retries:
-                return "refine", raw  # 回去差异化
-            return "abandoned", raw   # 多次仍重复 → 放弃
-
         if decision.verdict == TheoryVerdict.flawed:
             return "abandoned", raw
-
-        return "code_reference", raw
+        # weak / derivative → refine（重试上限由调用方按 auto 模式决定）
+        return "refine", raw
 
     def _route_debug(self, idea_id: str, idea_fsm: IdeaFSMState,
                       retry_count: int) -> tuple[str, dict]:
-        """DEBUG 后的路由决策（规则判断，无 LLM）"""
+        """DEBUG 后的路由决策（纯质量评估，不含重试策略）"""
         decision = self._parse_debug_report(idea_id)
         raw = decision.model_dump()
 
         if decision.verdict == DebugVerdict.tests_pass:
             return "experiment", raw
-
-        max_retries = MAX_RETRIES["debug"]
-
         if decision.verdict == DebugVerdict.fixable:
-            if retry_count < max_retries:
-                return "debug", raw
-            return "code", raw  # 超限 → 重写
-
+            return "debug", raw
         if decision.verdict == DebugVerdict.needs_rewrite:
             return "code", raw
-
         if decision.verdict == DebugVerdict.design_issue:
             return "refine", raw
-
-        # 兜底
-        if retry_count >= max_retries:
-            return "code", raw
         return "debug", raw
 
     # ── 上下文收集 ───────────────────────────────────────────
@@ -804,12 +782,6 @@ class ResearchFSM:
         print(f"  可选: [e]xperiment | [r]efine | [d]eep-survey | "
               f"[a]bandon | [c]onclude | [q]uit")
 
-        try:
-            choice = input("\n  Enter 接受推荐，或输入选项: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print("\n  [FSM] 中断，保留当前状态")
-            return "_quit"
-
         mapping = {
             "e": "experiment",
             "r": "refine",
@@ -818,7 +790,17 @@ class ResearchFSM:
             "c": "conclude",
             "q": "_quit",
         }
-        return mapping.get(choice, to_state)
+        while True:
+            try:
+                choice = input("\n  Enter 接受推荐，或输入选项: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  [FSM] 中断，保留当前状态")
+                return "_quit"
+            if not choice:
+                return to_state
+            if choice in mapping:
+                return mapping[choice]
+            print(f"  无效输入 '{choice}'，请选择: e/r/d/a/c/q")
 
     # ── 持久化 ───────────────────────────────────────────────
 
@@ -921,7 +903,7 @@ class ResearchFSM:
             tree = self.tree.load()
             for idea in tree.root.ideas:
                 if idea.id == idea_id or idea.id.endswith(f"-{idea_id}"):
-                    idea.status = "failed"
+                    idea.status = IdeaStatus.failed
                     self.tree.save(tree)
                     return
         except Exception as e:

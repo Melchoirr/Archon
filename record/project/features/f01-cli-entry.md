@@ -19,7 +19,7 @@
 CLI 入口层，提供 15 个子命令覆盖完整研究流程。两种运行模式：
 
 1. **手动模式**：逐阶段执行（init, elaborate, survey, ideation, refine, code-ref, code, theory-check, debug, experiment, analyze, conclude, status, memory, auto）
-2. **FSM 模式**：`fsm run` 自动走完 topic 或 idea 级状态机，支持 `--force` 强制跳转和 `--from` 指定起始状态
+2. **FSM 模式**：`fsm run` 自动走完 topic 或 idea 级状态机，支持 `--force` 强制跳转、`--from` 指定起始状态、`--auto` 全自动运行（跳过用户确认）
 
 **Idea ID 格式**：`T001-I001`（两级编码：topic + idea），支持 `T001` 指代全 topic
 
@@ -63,6 +63,11 @@ python run_research.py status
 （暂无）
 
 ## 变化
+### [修改] 2026-03-24 10:57 — fsm run 增加 --auto CLI 参数
+- **目的**：支持全自动运行模式，跳过用户确认，由 MAX_RETRIES 控制上限
+- **改动**：`run_research.py` — fsm_run_p 增加 `--auto` 参数；`cmd_fsm()` 中读取 auto 标志并设置到 FSM 实例
+- **验证**：`python run_research.py fsm run --help` 显示 `--auto` 参数
+
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 - **目的**：实现 CLI 入口和项目初始化
 - **改动**：新增 run_research.py（800 行），包含 15 个子命令、topic 解析、环境验证
