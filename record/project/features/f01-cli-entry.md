@@ -63,7 +63,7 @@ python run_research.py status
 （暂无）
 
 ## 变化
-### [修改] 2026-03-24 10:57 — fsm run 增加 --auto CLI 参数
+### [修改] 2026-03-24 10:57 — fsm run 增加 --auto CLI 参数 (`f944c36`)
 - **目的**：支持全自动运行模式，跳过用户确认，由 MAX_RETRIES 控制上限
 - **改动**：`run_research.py` — fsm_run_p 增加 `--auto` 参数；`cmd_fsm()` 中读取 auto 标志并设置到 FSM 实例
 - **验证**：`python run_research.py fsm run --help` 显示 `--auto` 参数
