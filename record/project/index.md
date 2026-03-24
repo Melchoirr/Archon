@@ -153,7 +153,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F09 — 分析与结论 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/analysis_agent.py`, `agents/conclusion_agent.py`, `tools/vlm_analysis.py`
 - **上游**：F08, F02 / **下游**：F04, F11
-- **最后变更**：2026-03-24 01:20
+- **最后变更**：2026-03-24 00:11
 
 <details><summary>功能概要</summary>
 
@@ -169,7 +169,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F10 — 数据模型与路径管理 · ✅已完成 · 🟢在用
 - **核心文件**：`shared/paths.py`, `shared/path_guard.py`, `shared/models/`, `shared/templates/`
 - **上游**：无 / **下游**：F01-F12 全部
-- **最后变更**：2026-03-24 01:20
+- **最后变更**：2026-03-24 00:11
 
 <details><summary>功能概要</summary>
 

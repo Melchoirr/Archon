@@ -76,7 +76,7 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
-### [修改] 2026-03-24 01:20 — 丰富 18 个工具的 docstring（使用场景/返回/示例） (`d96766b`)
+### [修改] 2026-03-24 00:11 — 丰富 18 个工具的 docstring（使用场景/返回/示例） (`d96766b`)
 - **目的**：LLM 通过 tool schema description 获取工具使用指导，原 docstring 过于简略（一句话）
 - **改动**：`shared/models/tool_params.py` 为 ReadFile/WriteFile/AppendFile/ListDirectory/ReadTree/UpdateIdeaPhase/UpdateIdeaStatus/UpdateSurveyStatus/UpdateElaborateStatus/AddIdea/AddExperimentStep/UpdateIteration/QueryMemory/AddExperience/DownloadPaper/ReadPaperSection/RunCommand/AnalyzeImage/AnalyzePlots 共 18 个 Params 类补充结构化 docstring
 - **验证**：`to_schema()["description"]` 验证全部包含「使用场景」「返回」「示例」

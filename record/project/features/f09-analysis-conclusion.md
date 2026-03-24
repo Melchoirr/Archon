@@ -69,7 +69,7 @@ python run_research.py conclude --idea T001-I001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-24 01:20 — AnalysisAgent/ConclusionAgent system prompt 添加工具表格+工作流 (`d96766b`)
+### [修改] 2026-03-24 00:11 — AnalysisAgent/ConclusionAgent system prompt 添加工具表格+工作流 (`d96766b`)
 - **目的**：Agent system prompt 缺乏工具使用指导，LLM 不清楚何时/如何调用工具
 - **改动**：`agents/analysis_agent.py` SYSTEM_PROMPT 插入可用工具表格（9 行）和 8 步工作流；`agents/conclusion_agent.py` SYSTEM_PROMPT 插入可用工具表格（5 行）和 5 步工作流
 - **验证**：import 通过

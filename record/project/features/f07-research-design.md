@@ -72,7 +72,7 @@ python run_research.py theory-check --idea T001-I001
 - **改动**：`refinement_agent.py` `build_prompt()` 增加 `analysis_path` 参数，prompt 指示 Agent 先 read_file 了解分析结论；`orchestrator.py` `phase_refine()` 检查 analysis.md 存在则传路径
 - **验证**：import 通过
 
-### [修改] 2026-03-24 01:20 — DesignAgent/RefinementAgent system prompt 添加工具表格+工作流 (`d96766b`)
+### [修改] 2026-03-24 00:11 — DesignAgent/RefinementAgent system prompt 添加工具表格+工作流 (`d96766b`)
 - **目的**：Agent system prompt 缺乏工具使用指导，LLM 不清楚何时/如何调用工具
 - **改动**：`agents/design_agent.py` SYSTEM_PROMPT 插入可用工具表格（7 行）和 6 步工作流；`agents/refinement_agent.py` SYSTEM_PROMPT 插入可用工具表格（8 行）和 6 步工作流
 - **验证**：import 通过
