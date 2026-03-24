@@ -129,8 +129,7 @@ class ResearchFSM:
 
             # 用户选择退出：保留当前状态，不记录转换
             if next_state == "_quit":
-                print(f"\n[FSM] 用户退出，当前状态保留为 {state}")
-                break
+                return f"用户退出，当前状态保留为 {state}"
 
             # 记录转换
             self._record_transition(state, next_state, "auto:linear",
@@ -201,8 +200,7 @@ class ResearchFSM:
 
             # 用户选择退出：保留当前状态，不记录转换
             if next_state == "_quit":
-                print(f"\n[FSM] 用户退出，{idea_id} 状态保留为 {state}")
-                break
+                return f"用户退出，{idea_id} 状态保留为 {state}"
 
             # 记录
             trigger = f"eval:{decision.get('verdict', 'auto')}" if isinstance(decision, dict) and "verdict" in decision else "auto:linear"
