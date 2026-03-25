@@ -87,13 +87,16 @@ def extract_search_queries(client, model: str, proposal_text: str) -> list[str]:
 
 
 def search_prior_work(queries: list[str]) -> list[dict]:
-    """对每个 query 调用 search_papers，去重合并"""
+    """对每个 query 调用 search_papers（含 abstract），去重合并"""
     seen_ids = set()
     results = []
     for query in queries:
         try:
-            raw = search_papers(query, limit=5, year_range="2022-")
+            raw = search_papers(query, limit=5, year_range="2022-",
+                                include_abstract=True)
             papers = json.loads(raw)
+            if isinstance(papers, dict) and "error" in papers:
+                continue
             for p in papers:
                 pid = p.get("paperId", "")
                 if pid and pid not in seen_ids:
@@ -104,15 +107,77 @@ def search_prior_work(queries: list[str]) -> list[dict]:
                         "citation_count": p.get("citationCount", 0),
                         "arxiv_id": p.get("externalIds", {}).get("ArXiv", ""),
                         "venue": p.get("venue", ""),
+                        "abstract": p.get("abstract", ""),
                     })
         except Exception as e:
             logger.warning(f"搜索 '{query}' 失败: {e}")
     return results
 
 
+SIMILARITY_HIGH = 0.85   # 高度重复阈值
+SIMILARITY_MEDIUM = 0.75  # 中度相似阈值
+
+
+def _compute_embedding_similarity(proposal_text: str,
+                                  prior_work: list[dict]) -> dict:
+    """计算 proposal 与 prior_work abstracts 的 embedding 相似度。
+
+    Returns:
+        {
+            "max_similarity": float,
+            "max_similar_paper": str,  # 最相似论文标题
+            "high_similarity_papers": [...],  # >= SIMILARITY_HIGH 的论文
+            "similarities": [...],  # 每篇论文的相似度
+        }
+    """
+    from tools.embedding import compute_max_similarity
+
+    # 收集有 abstract 的论文
+    abstracts = []
+    papers_with_abstract = []
+    for pw in prior_work:
+        abstract = pw.get("abstract", "")
+        if abstract and len(abstract) > 50:
+            abstracts.append(abstract)
+            papers_with_abstract.append(pw)
+
+    if not abstracts:
+        logger.info("  无可用 abstract，跳过 embedding 相似度检测")
+        return {"max_similarity": 0.0, "max_similar_paper": "",
+                "high_similarity_papers": [], "similarities": []}
+
+    max_sim, max_idx, all_sims = compute_max_similarity(
+        proposal_text, abstracts, dimensions=1024)
+
+    result = {
+        "max_similarity": round(max_sim, 4),
+        "max_similar_paper": papers_with_abstract[max_idx]["title"] if max_idx >= 0 else "",
+        "high_similarity_papers": [],
+        "similarities": [round(s, 4) for s in all_sims],
+    }
+
+    for i, sim in enumerate(all_sims):
+        if sim >= SIMILARITY_HIGH:
+            result["high_similarity_papers"].append({
+                "title": papers_with_abstract[i]["title"],
+                "similarity": round(sim, 4),
+            })
+
+    if result["high_similarity_papers"]:
+        titles = ", ".join(p["title"][:50] for p in result["high_similarity_papers"])
+        logger.warning(f"  高度相似论文: {titles}")
+    elif max_sim >= SIMILARITY_MEDIUM:
+        logger.info(f"  最高相似度: {max_sim:.3f} ({result['max_similar_paper'][:50]})")
+    else:
+        logger.info(f"  最高相似度: {max_sim:.3f}（较低，新颖性好）")
+
+    return result
+
+
 def score_idea(client, model: str, proposal_text: str,
-               prior_work: list, topic_title: str) -> dict:
-    """单次 LLM 调用，结构化评分"""
+               prior_work: list, topic_title: str,
+               similarity_info: dict = None) -> dict:
+    """单次 LLM 调用，结构化评分。结合 embedding 相似度信息。"""
     pw_text = ""
     if prior_work:
         for i, p in enumerate(prior_work[:10], 1):
@@ -121,15 +186,42 @@ def score_idea(client, model: str, proposal_text: str,
     else:
         pw_text = "未找到高度相关的先前工作。"
 
+    # 将 embedding 相似度结果加入 prompt
+    sim_text = ""
+    if similarity_info:
+        max_sim = similarity_info.get("max_similarity", 0)
+        high_papers = similarity_info.get("high_similarity_papers", [])
+        if high_papers:
+            sim_text = (
+                f"\n\n## Embedding 相似度分析（客观指标，必须参考）\n"
+                f"⚠️ 以下论文与本 proposal 的 embedding cosine similarity >= {SIMILARITY_HIGH}，"
+                f"说明方法高度重复，Novelty 不应超过 2 分：\n"
+            )
+            for hp in high_papers:
+                sim_text += f"- {hp['title']} (similarity={hp['similarity']})\n"
+        elif max_sim >= SIMILARITY_MEDIUM:
+            sim_text = (
+                f"\n\n## Embedding 相似度分析\n"
+                f"最相似论文: {similarity_info.get('max_similar_paper', '')}\n"
+                f"相似度: {max_sim:.3f}（中等相似，Novelty 建议 2-3 分）\n"
+            )
+        else:
+            sim_text = (
+                f"\n\n## Embedding 相似度分析\n"
+                f"最高相似度: {max_sim:.3f}（较低，未发现高度相似工作）\n"
+            )
+
+    prompt_content = SCORE_PROMPT.format(
+        topic_title=topic_title,
+        proposal=proposal_text[:8000],
+        prior_work=pw_text + sim_text,
+    )
+
     resp = llm_call_with_retry(
         client,
         model=model,
         max_tokens=500,
-        messages=[{"role": "user", "content": SCORE_PROMPT.format(
-            topic_title=topic_title,
-            proposal=proposal_text[:8000],
-            prior_work=pw_text,
-        )}],
+        messages=[{"role": "user", "content": prompt_content}],
     )
     text = resp.content[0].text.strip()
 
@@ -153,6 +245,22 @@ def score_idea(client, model: str, proposal_text: str,
                                     "feasibility": "解析失败", "alignment": "解析失败"},
                       "recommendation": "需人工评审"}
 
+    # Embedding 相似度硬约束：高相似度时强制压低 novelty
+    if similarity_info:
+        max_sim = similarity_info.get("max_similarity", 0)
+        if max_sim >= SIMILARITY_HIGH and scores.get("novelty", 3) > 2:
+            logger.info(f"  Embedding 强制: novelty {scores['novelty']} -> 2 (sim={max_sim:.3f})")
+            scores["novelty"] = 2
+            if "rationale" in scores:
+                scores["rationale"]["novelty"] = (
+                    f"Embedding 相似度 {max_sim:.3f} >= {SIMILARITY_HIGH}，"
+                    f"与 '{similarity_info.get('max_similar_paper', '')[:50]}' 高度重复"
+                )
+        elif max_sim >= SIMILARITY_MEDIUM and scores.get("novelty", 3) > 3:
+            logger.info(f"  Embedding 压低: novelty {scores['novelty']} -> 3 (sim={max_sim:.3f})")
+            scores["novelty"] = 3
+        scores["max_similarity"] = round(max_sim, 4)
+
     # 用 Score 模型校验并计算 composite
     try:
         score_model = Score(
@@ -173,7 +281,8 @@ def score_idea(client, model: str, proposal_text: str,
 
 
 def _write_review_md(idea_dir: str, idea_title: str, scores: dict,
-                     prior_work: list, rank: int, total: int):
+                     prior_work: list, rank: int, total: int,
+                     max_similarity: float = 0.0):
     """写入 review.md"""
     rationale = scores.get("rationale", {})
     rec = scores.get("recommendation", "")
@@ -190,8 +299,20 @@ def _write_review_md(idea_dir: str, idea_title: str, scores: dict,
         f"| Alignment | {scores.get('alignment', '?')}/5 | {rationale.get('alignment', '')} |",
         f"| **综合** | **{scores.get('composite', '?')}** | Rank: {rank}/{total} |",
         "",
-        "## 检索到的相关工作",
     ]
+
+    # Embedding 相似度信息
+    if max_similarity > 0:
+        level = "高度重复" if max_similarity >= SIMILARITY_HIGH else (
+            "中度相似" if max_similarity >= SIMILARITY_MEDIUM else "较低")
+        lines.extend([
+            "## Embedding 相似度",
+            f"- 最高 cosine similarity: **{max_similarity:.3f}** ({level})",
+            f"- 阈值: >={SIMILARITY_HIGH} 高度重复, >={SIMILARITY_MEDIUM} 中度相似",
+            "",
+        ])
+
+    lines.append("## 检索到的相关工作")
 
     if prior_work:
         for p in prior_work[:8]:
@@ -246,12 +367,16 @@ def score_all_ideas(topic_dir: str, client, model: str, topic_title: str,
         queries = extract_search_queries(client, model, proposal_text)
         logger.info(f"  {idea.id} 搜索查询: {queries}")
 
-        # Step 2: 文献检索
+        # Step 2: 文献检索（含 abstract）
         prior_work = search_prior_work(queries)
         logger.info(f"  {idea.id} 找到 {len(prior_work)} 篇相关论文")
 
-        # Step 3: 评分
-        scores = score_idea(client, model, proposal_text, prior_work, topic_title)
+        # Step 2.5: Embedding 相似度检测
+        similarity_info = _compute_embedding_similarity(proposal_text, prior_work)
+
+        # Step 3: LLM 评分（将相似度信息传入）
+        scores = score_idea(client, model, proposal_text, prior_work,
+                            topic_title, similarity_info=similarity_info)
 
         scored.append({
             "idea_id": idea.id,
@@ -260,6 +385,7 @@ def score_all_ideas(topic_dir: str, client, model: str, topic_title: str,
             "scores": scores,
             "prior_work": prior_work,
             "idea_dir": str(idea_dir),
+            "max_similarity": similarity_info.get("max_similarity", 0.0),
         })
 
     # 排序并分配 rank
@@ -281,6 +407,7 @@ def score_all_ideas(topic_dir: str, client, model: str, topic_title: str,
         _write_review_md(
             item["idea_dir"], item["title"], item["scores"],
             item["prior_work"], rank, len(scored),
+            max_similarity=item.get("max_similarity", 0.0),
         )
 
         # 更新 tree 中的 idea

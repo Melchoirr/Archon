@@ -131,7 +131,7 @@ class BaseAgent:
                 "model": self.model,
                 "system": self.system_prompt,
                 "messages": self.messages,
-                "max_tokens": 8192,
+                "max_tokens": 16384,
             }
             if self.tools:
                 kwargs["tools"] = self.tools

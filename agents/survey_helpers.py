@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 
 _SEARCH_SYSTEM = """你是学术文献搜索专家，为课题"{topic_title}"搜集 15-30 篇高质量论文。
 
-{search_directions}
+## 课题背景（来自 context.md）
+{context_md_content}
+
+## 种子关键词（来自 config.yaml）
+{seed_keywords}
 
 ## 工具说明
 
@@ -71,31 +75,67 @@ search_papers 支持三种搜索模式（search_mode 参数）：
 - 默认 sort="relevance"（按相关性排序，推荐）
 - 需要高引论文时显式传 sort="citationCount:desc"
 
-## 执行流程
+## 搜索策略框架
+
+**你必须从上面的"课题背景"中自主提取搜索关键词，不要只依赖种子关键词。**
 
 **阶段零：确定领域 topic_id**（首次必做，1 轮）
 0. 调用 search_topics(query="课题核心领域关键词") 获取 1-2 个最相关的 topic_id
-   例如课题是时序预测，调用 search_topics(query="time series forecasting")
-   记住返回的 topic_id（如 T12205），后续所有 search_papers 都带上此参数
+   记住返回的 topic_id，后续所有 search_papers 都带上此参数
 
-**阶段一：逐查询搜索**（核心，用 search_papers + topic_id）
-对上述每个查询依次:
-1. 调用 search_papers(query=查询词, limit=15, min_citations=10, topic_id=上面获得的 topic_id)
-   - 精确概念用引号包裹：`query='"mean reversion" forecasting'`
-2. 如果结果不相关或为空 → **先切换 semantic 模式重试**（用完整自然语言描述）
-3. 仍不相关 → 不带 topic_id 重试（扩大范围），或降低 min_citations 为 0
-4. 仅当 search_papers 返回 "Error" 时 → 改用 web_search(query="查询词 site:arxiv.org OR site:semanticscholar.org")
-5. 不要对同一查询重试超过 3 次，直接推进下一个
-6. 如果返回结果中有 topics 字段，观察是否有更精确的 topic_id 可用于后续搜索
+**阶段一：经典文献搜索**（从课题背景提取搜索词）
+
+从课题背景中提取以下类型的搜索词，逐个搜索：
+1. **具体论文名/方法名**：课题背景中明确提到的论文（如 Sundial, TimeFlow, CSDI 等）→ 用 keyword 模式逐个搜
+2. **研究角度的核心概念**：课题背景中定义的每个研究角度/子问题 → keyword + semantic 搜
+3. **种子关键词**：config 中的关键词作为补充
+
+对每个搜索词：
+- 调用 search_papers(query=搜索词, limit=15, min_citations=10, topic_id=...)
+- 精确概念用引号包裹：`query='"mean reversion" forecasting'`
+- 结果不相关或为空 → **先切换 semantic 模式重试**
+- 仍不相关 → 不带 topic_id 重试，或降低 min_citations 为 0
+- 仅当 search_papers 返回 "Error" 时 → 改用 web_search
+- 不要对同一查询重试超过 3 次
+- 如果返回结果有 topics 字段，观察更精确的 topic_id
+
+**阶段 1.5：前沿论文专项搜索**（重要！发现最新但低引用的论文）
+
+新论文（2024-2025）引用数极低（0-5），会被阶段一的 min_citations 过滤掉。
+但这些论文往往包含最前沿的方法/模型，对课题至关重要。**必须执行此阶段。**
+
+本阶段分两步：**先用 web_search 发现论文名，再用 search_papers 精搜入库。**
+
+**步骤 A：用 web_search 发现最新论文名**（3-5 次搜索）
+- 从课题背景中提取核心概念词，构造 web_search 查询
+- `web_search(query="课题核心关键词 arxiv 2024 2025")`
+- `web_search(query="课题核心关键词 latest model arxiv")`
+- 从 web_search 结果中提取**论文名称和方法名**
+- 关注 title 中的专有名词（大写开头或全大写缩写）
+
+**步骤 B：用 search_papers 精搜前沿论文**
+- 对步骤 A 发现的每个论文名/方法名：
+  `search_papers(query="论文名 + 领域关键词", limit=10, min_citations=0, year_range="2024-", topic_id=..., sort="publicationDate:desc")`
+- 同时对课题背景中每个研究角度做前沿搜索
+- keyword 搜不到 → 切 semantic 模式用完整标题重试
+- 找到新论文后，从标题提取关键词再搜一轮（滚雪球）
+- 记录所有新论文（即使 cited=0），relevance 字段前加 "[frontier]" 标记
 
 **阶段二：引用链展开**（如剩余轮次 ≥ 5）
-7. 选 citationCount 最高的 3-5 篇论文
-8. 调用 get_paper_references(paper_id=该论文的 paperId)
-9. 调用 search_paper_index(query=标题关键词) 检查重复，跳过已有论文
+- 选 citationCount 最高的 3-5 篇论文
+- 调用 get_paper_references(paper_id=该论文的 paperId)
+- 调用 search_paper_index(query=标题关键词) 检查重复，跳过已有论文
 
 **阶段三：写入**（必须执行）
-10. 调用 write_file 写入 paper_list.yaml，按 citation_count 降序
-11. 即使不足 10 篇也必须写入
+- 调用 write_file 写入 paper_list.yaml，按 citation_count 降序
+- 即使不足 10 篇也必须写入
+- 前沿论文的 relevance 字段前加 "[frontier]" 标记
+
+## 关键原则
+- **不要只搜种子关键词**，必须覆盖课题背景中提到的每个研究角度和具体论文名
+- 经典高引论文和前沿低引论文都要搜
+- 论文名用 keyword 搜，概念描述用 semantic 搜
+- 搜索词应从课题背景自主提取，种子关键词仅作补充
 
 ## paper_list.yaml 格式
 papers:
@@ -112,69 +152,30 @@ papers:
     summary_status: pending"""
 
 
-def _build_search_directions(topic_config) -> str:
+def _build_seed_keywords(topic_config) -> str:
+    """从 config 关键词构建种子关键词提示（仅作补充，不再硬编码查询列表）"""
     keywords = topic_config.search_keywords
-    title = topic_config.topic.title
-    domain = topic_config.topic.domain
-
     if not keywords:
-        return (
-            f'请根据课题 "{title}"（领域: {domain}）自行确定 8-12 个搜索方向。\n'
-            f'- 短关键词（2-4 词）用 keyword 模式\n'
-            f'- 精确概念用引号包裹，如 `\'"mean reversion" forecasting\'`\n'
-            f'- 长描述性查询用 semantic 模式'
-        )
-
-    queries = []  # (query_text, mode, note)
-
-    # 原始关键词：截断到 4 个词，keyword 模式 + 引号包裹核心概念
-    for kw in keywords:
-        words = kw.split()
-        short = " ".join(words[:4])
-        # 如果关键词本身是多词概念（≥2词），建议引号包裹
-        if len(words) >= 2:
-            quoted = f'"{short}"'
-            queries.append((quoted, "keyword", "精确短语"))
-        else:
-            queries.append((short, "keyword", ""))
-
-    # 两两交叉：keyword 模式，引号包裹核心概念
-    for i in range(len(keywords)):
-        for j in range(i + 1, len(keywords)):
-            t_i = keywords[i].split()[0]
-            t_j = keywords[j].split()[0]
-            combo = f'"{t_i}" "{t_j}"'
-            queries.append((combo, "keyword", "交叉组合"))
-
-    # 领域扩展：semantic 模式，用长描述
-    domain_extras = {
-        "time_series_forecasting": [
-            (f"{title} with deep learning methods", "semantic", "领域扩展"),
-            ("time series foundation model", "keyword", "领域扩展"),
-            ("time series generation", "keyword", "领域扩展"),
-        ],
-    }
-    queries.extend(domain_extras.get(domain, []))
-
-    # 去重，上限 14
-    seen = set()
-    unique = []
-    for item in queries:
-        key = item[0].lower().strip()
-        if key not in seen:
-            seen.add(key)
-            unique.append(item)
-    unique = unique[:14]
-
-    lines = ["强制搜索查询列表（必须按顺序全部执行）:"]
-    for i, (q, mode, note) in enumerate(unique, 1):
-        mode_tag = f" [mode={mode}]" if mode != "keyword" else ""
-        note_tag = f" ({note})" if note else ""
-        lines.append(f"{i}. `{q}`{mode_tag}{note_tag}")
+        return "(无种子关键词，请完全从课题背景中自主提取搜索词)"
+    lines = []
+    for i, kw in enumerate(keywords, 1):
+        lines.append(f"{i}. {kw}")
     lines.append("")
-    lines.append("说明：无标注的默认用 keyword 模式。[mode=semantic] 表示用 search_mode='semantic'。")
-    lines.append("如果 keyword 模式结果不相关，可切换 semantic 模式用完整自然语言描述重试。")
+    lines.append("以上仅为补充种子词，搜索应以课题背景中的论文名、方法名、研究角度为主。")
     return "\n".join(lines)
+
+
+def _read_context_md(config_path: str) -> str:
+    """读取 topic 目录下的 context.md 内容"""
+    topic_dir = os.path.dirname(config_path)
+    context_path = os.path.join(topic_dir, "context.md")
+    if os.path.exists(context_path):
+        try:
+            with open(context_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            logger.warning(f"Failed to read context.md: {e}")
+    return "(context.md 未找到，请完全从种子关键词和课题标题出发搜索)"
 
 
 def build_search_prompt(*, topic: str, round_num: int, paper_list_path: str,
@@ -198,17 +199,19 @@ def build_search_prompt(*, topic: str, round_num: int, paper_list_path: str,
 def make_search_agent(config_path: str, allowed_dirs: list[str] = None) -> BaseAgent:
     """Step 1: 搜索论文，输出 paper_list.yaml"""
     tc = load_topic_config(config_path)
-    search_directions = _build_search_directions(tc)
+    context_md_content = _read_context_md(config_path)
+    seed_keywords = _build_seed_keywords(tc)
     system_prompt = _SEARCH_SYSTEM.format(
         topic_title=tc.topic.title,
-        search_directions=search_directions,
+        context_md_content=context_md_content,
+        seed_keywords=seed_keywords,
     )
 
     agent = BaseAgent(
         name="论文搜索Agent",
         system_prompt=system_prompt,
         tools=[],
-        max_iterations=25,
+        max_iterations=35,
         allowed_dirs=allowed_dirs,
     )
     agent.register_tool("search_topics", search_topics, SearchTopicsParams)
@@ -579,7 +582,7 @@ def make_eda_guide_agent(config_path: str, allowed_dirs: list[str] = None) -> Ba
         name="EDA规划Agent",
         system_prompt=system_prompt,
         tools=[],
-        max_iterations=12,
+        max_iterations=30,
         allowed_dirs=allowed_dirs,
     )
     agent.register_tool("read_file", read_file, ReadFileParams)
@@ -592,6 +595,8 @@ def make_eda_guide_agent(config_path: str, allowed_dirs: list[str] = None) -> Ba
 # ---------- Step 5: 综合整理 ----------
 
 _SYNTHESIS_SYSTEM = """你是学术综述撰写专家，为课题"{topic_title}"整合全部调研材料生成综合文档。
+
+{context_section}
 
 ## 工具说明
 
@@ -644,12 +649,14 @@ _SYNTHESIS_SYSTEM = """你是学术综述撰写专家，为课题"{topic_title}"
 - leaderboard.md: 每个数据集一张完整表格，数据必须来自论文总结中 "实验分析" 章节，用 **加粗** 标注最优值
 - baselines.md: ≥800字，每个 baseline ≥150字，含核心思路、代码可用性评价、推荐理由
 - 每个论断注明来源论文
-- 论文结论冲突时，标注分歧并分析可能原因"""
+- 论文结论冲突时，标注分歧并分析可能原因
+- **综述必须覆盖课题背景中定义的每个研究角度**（如有课题背景提供）"""
 
 
 def build_synthesis_prompt(*, summaries_dir: str, repos_summary_path: str,
                            repos_exists: bool, survey_dir: str,
                            baselines_path: str,
+                           context_path: str = None,
                            eda_report_path: str = None, eda_exists: bool = False,
                            datasets_path: str = None, metrics_path: str = None) -> str:
     repos_line = f"- 代码仓库调研: {repos_summary_path}" if repos_exists else "- 代码仓库调研: (未生成)"
@@ -659,6 +666,10 @@ def build_synthesis_prompt(*, summaries_dir: str, repos_summary_path: str,
         ref_lines += f"- 数据集描述（参考）: {datasets_path}\n"
     if metrics_path:
         ref_lines += f"- 评估指标（参考）: {metrics_path}\n"
+    context_line = ""
+    if context_path:
+        ref_lines += f"- 课题背景: {context_path}\n"
+        context_line = f"\n请先阅读课题背景（context.md），确保综述覆盖其中定义的每个研究角度。\n"
     return f"""请基于以下材料生成综合文档:
 
 ## 材料目录
@@ -672,20 +683,27 @@ def build_synthesis_prompt(*, summaries_dir: str, repos_summary_path: str,
 3. {baselines_path} - Baseline 方法
 
 注意：datasets.md 和 metrics.md 已由前序步骤生成，请将其作为参考材料引用，不要重新生成。
-
+{context_line}
 请先用 list_directory 和 read_file 阅读所有总结文件、仓库调研报告和 EDA 报告，再生成综合文档。"""
 
 
 def make_synthesis_agent(config_path: str, allowed_dirs: list[str] = None) -> BaseAgent:
     """Step 5: 读 summaries + repos_summary + eda_report 写综述文档"""
     tc = load_topic_config(config_path)
-    system_prompt = _SYNTHESIS_SYSTEM.format(topic_title=tc.topic.title)
+    context_md_content = _read_context_md(config_path)
+    context_section = ""
+    if "(context.md 未找到" not in context_md_content:
+        context_section = f"## 课题背景（来自 context.md）\n\n{context_md_content}\n\n**综述必须覆盖上述课题背景中定义的每个研究角度。**"
+    system_prompt = _SYNTHESIS_SYSTEM.format(
+        topic_title=tc.topic.title,
+        context_section=context_section,
+    )
 
     agent = BaseAgent(
         name="综合整理Agent",
         system_prompt=system_prompt,
         tools=[],
-        max_iterations=15,
+        max_iterations=40,
         allowed_dirs=allowed_dirs,
     )
     agent.register_tool("read_file", read_file, ReadFileParams)

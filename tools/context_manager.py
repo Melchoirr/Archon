@@ -12,12 +12,12 @@ PHASE_CONTEXT_RULES = {
     "survey": ["context.md"],
     "ideation": ["context.md", "survey/survey.md", "baselines.md",
                  "datasets.md", "metrics.md", "eda/eda_report.md"],
-    "refine": ["survey/survey.md", "datasets.md", "metrics.md",
+    "refine": ["survey/survey.md", "repos_summary.md", "datasets.md", "metrics.md",
                "eda/eda_report.md"],
-    "code_reference": [],
+    "code_reference": ["repos_summary.md"],
     "code": ["datasets.md"],
     "experiment": ["datasets.md"],
-    "analyze": [],
+    "analyze": ["baselines.md", "survey/leaderboard.md"],
     "conclude": [],
 }
 

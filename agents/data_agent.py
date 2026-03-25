@@ -64,7 +64,7 @@ _SYSTEM_PROMPT = """你是数据工程与 EDA 执行专家。严格按 {eda_guid
 8. 调用 analyze_plots_dir(plots_dir='{eda_plots_dir}', context='课题上下文')
 
 **Phase 4: 生成报告**
-9. write_file 更新 {datasets_path}（补充实际路径、格式、规模）
+9. 先 read_file(path='{datasets_path}') 读取已有内容，在其基础上**追加**实际数据路径、文件格式、行列数等信息（不要覆盖已有的论文使用情况描述，只补充硬事实）
 10. write_file 写入 {eda_report_path}
 11. update_config_section(section='datasets', data='YAML内容')
 

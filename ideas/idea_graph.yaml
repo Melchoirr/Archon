@@ -1,0 +1,4 @@
+relationships:
+- idea_a: I001
+  idea_b: I002
+  type: complementary

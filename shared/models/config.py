@@ -9,6 +9,7 @@ class TopicSection(BaseModel):
     title: str = "(未设置课题)"
     domain: str = ""
     keywords: list[str] = []
+    frontier_keywords: list[str] = []  # 前沿论文/方法名，专门用于搜索最新低引用论文
 
 
 class LLMSection(BaseModel):
@@ -68,3 +69,7 @@ class TopicConfig(BaseModel):
     @property
     def search_keywords(self) -> list[str]:
         return self.topic.keywords
+
+    @property
+    def frontier_keywords(self) -> list[str]:
+        return self.topic.frontier_keywords
