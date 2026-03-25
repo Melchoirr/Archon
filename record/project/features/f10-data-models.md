@@ -76,7 +76,7 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
-### [实现] 2026-03-25 19:42 — 新增 CheckLocalKnowledgeParams 参数模型
+### [实现] 2026-03-25 19:42 — 新增 CheckLocalKnowledgeParams 参数模型 (`eeb0585`)
 - **目的**：为 check_local_knowledge 工具提供 Pydantic 参数校验
 - **改动**：`shared/models/tool_params.py` 新增 `CheckLocalKnowledgeParams(query, resource_type)`；`tools/__init__.py` 导出新模型
 - **验证**：`CheckLocalKnowledgeParams.to_schema()` 输出正确 JSON Schema

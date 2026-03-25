@@ -66,7 +66,7 @@ python run_research.py status --topic T001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-25 19:42 — IdeationAgent 注册 check_local_knowledge 工具
+### [修改] 2026-03-25 19:42 — IdeationAgent 注册 check_local_knowledge 工具 (`eeb0585`)
 - **目的**：Idea 生成时可预检本地知识库已有资源，避免搜索/引用重复内容
 - **改动**：`agents/ideation_agent.py` 新增 import 和 register_tool
 - **验证**：import 通过

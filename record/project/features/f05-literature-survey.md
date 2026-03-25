@@ -77,7 +77,7 @@ python run_research.py survey --topic T001 --step 4
 （暂无）
 
 ## 变化
-### [实现] 2026-03-25 19:42 — 新增 check_local_knowledge 预检工具
+### [实现] 2026-03-25 19:42 — 新增 check_local_knowledge 预检工具 (`eeb0585`)
 - **目的**：让 Agent 在决策阶段就能查询本地是否已有论文/总结/代码库，避免重复下载
 - **改动**：`tools/paper_manager.py` 新增 `check_local_knowledge()` 函数，检查 index.yaml + summaries + repos；`agents/survey_helpers.py` 在 3 处 Agent 工厂注册该工具
 - **验证**：`check_local_knowledge("sundial")` 返回论文+总结匹配，`check_local_knowledge("chronos", resource_type="repo")` 返回代码库匹配，空查询返回"可以下载"

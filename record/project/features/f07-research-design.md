@@ -67,7 +67,7 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
-### [修改] 2026-03-25 19:42 — 3 个 Agent 注册 check_local_knowledge 工具
+### [修改] 2026-03-25 19:42 — 3 个 Agent 注册 check_local_knowledge 工具 (`eeb0585`)
 - **目的**：研究设计阶段可预检本地知识库已有资源
 - **改动**：`agents/design_agent.py`、`agents/refinement_agent.py`、`agents/theory_check_agent.py` 新增 import 和 register_tool
 - **验证**：import 通过
