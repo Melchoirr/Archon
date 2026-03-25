@@ -123,8 +123,16 @@ class ResearchFSM:
             # 评估转换
             next_state, decision = self._evaluate_topic_transition(state)
 
+            # auto 模式：施加重试上限
+            if self.auto and state in MAX_RETRIES:
+                survey_rounds = sum(
+                    1 for r in self.snapshot.transition_history
+                    if r.to_state in ("survey", "deep_survey"))
+                if survey_rounds >= MAX_RETRIES.get("survey", 3):
+                    next_state = "ideation"
+
             # 用户确认（仅 interactive 模式）
-            if not self.auto and self._needs_user_confirm(state, next_state):
+            if not self.auto:
                 next_state = self._prompt_user_topic(state, next_state, decision)
 
             # 用户选择退出：保留当前状态，不记录转换
@@ -132,7 +140,8 @@ class ResearchFSM:
                 return f"用户退出，当前状态保留为 {state}"
 
             # 记录转换
-            self._record_transition(state, next_state, "auto:linear",
+            trigger = f"eval:{decision.get('verdict', 'auto')}" if isinstance(decision, dict) and decision.get("verdict") else "auto:linear"
+            self._record_transition(state, next_state, trigger,
                                      decision_snapshot=decision if isinstance(decision, dict) else None)
 
             self.snapshot.topic_state = next_state
@@ -297,10 +306,25 @@ class ResearchFSM:
             self._execute_topic_state(state)
             next_state, decision = self._evaluate_topic_transition(state)
 
-            if self._needs_user_confirm(state, next_state):
+            # auto 模式：施加重试上限
+            if self.auto and state in MAX_RETRIES:
+                survey_rounds = sum(
+                    1 for r in self.snapshot.transition_history
+                    if r.to_state in ("survey", "deep_survey"))
+                if survey_rounds >= MAX_RETRIES.get("survey", 3):
+                    next_state = "ideation"
+
+            # 用户确认（仅 interactive 模式）
+            if not self.auto:
                 next_state = self._prompt_user_topic(state, next_state, decision)
 
-            record = self._record_transition(state, next_state, "auto:linear")
+            if next_state == "_quit":
+                print(f"\n[FSM] 用户退出，Topic 状态保留为 {state}")
+                return None
+
+            trigger = f"eval:{decision.get('verdict', 'auto')}" if isinstance(decision, dict) and decision.get("verdict") else "auto:linear"
+            record = self._record_transition(state, next_state, trigger,
+                                              decision_snapshot=decision if isinstance(decision, dict) else None)
             self.snapshot.topic_state = next_state
             self._persist_snapshot()
             return record
@@ -711,29 +735,59 @@ class ResearchFSM:
 
     def _prompt_user_topic(self, from_state: str, to_state: str,
                             decision: dict) -> str:
-        """Topic 级用户确认"""
+        """Topic 级用户确认（仿照 idea 级交互）"""
         print(f"\n[FSM] {from_state.upper()} 完成")
-        if decision:
+
+        if isinstance(decision, dict) and decision:
             verdict = decision.get("verdict", "")
-            print(f"  判定: {verdict}")
+            confidence = decision.get("confidence", "")
+            print(f"\n  判定: {verdict}" +
+                  (f" (confidence: {confidence})" if confidence else ""))
+
             if decision.get("gap_areas"):
                 print(f"  缺失方向: {', '.join(decision['gap_areas'])}")
 
-        print(f"\n  推荐 → {to_state.upper()}")
-        print(f"  可选: [s]urvey | [i]deation | [q]uit")
+            if decision.get("coverage_summary"):
+                print(f"  覆盖情况: {decision['coverage_summary']}")
 
-        try:
-            choice = input("\n  Enter 接受推荐，或输入选项: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print("\n  [FSM] 中断，保留当前状态")
-            return "_quit"
-        if choice == "q":
-            return "_quit"
-        elif choice == "s":
-            return "survey"
-        elif choice == "i":
-            return "ideation"
-        return to_state
+            detail = decision.get("next_action_detail", "")
+            if detail:
+                print(f"  建议: {detail}")
+
+            suggestions = decision.get("revision_suggestions", [])
+            if suggestions:
+                print(f"  改进方向:")
+                for s in suggestions[:3]:
+                    print(f"    - {s}")
+
+        # 统计 survey 轮次
+        survey_rounds = sum(
+            1 for r in self.snapshot.transition_history
+            if r.to_state in ("survey", "deep_survey"))
+        if survey_rounds > 0:
+            print(f"\n  已完成 survey 轮次: {survey_rounds}/{MAX_RETRIES.get('survey', 3)}")
+
+        print(f"\n  推荐 → {to_state.upper()}")
+        print(f"  可选: [e]laborate | [s]urvey | [d]eep-survey | [i]deation | [q]uit")
+
+        mapping = {
+            "e": "elaborate",
+            "s": "survey",
+            "d": "deep_survey",
+            "i": "ideation",
+            "q": "_quit",
+        }
+        while True:
+            try:
+                choice = input("\n  Enter 接受推荐，或输入选项: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  [FSM] 中断，保留当前状态")
+                return "_quit"
+            if not choice:
+                return to_state
+            if choice in mapping:
+                return mapping[choice]
+            print(f"  无效输入 '{choice}'，请选择: e/s/d/i/q")
 
     def _prompt_user_idea(self, from_state: str, to_state: str,
                            decision: dict, idea_id: str,

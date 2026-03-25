@@ -68,43 +68,36 @@ ZHIPU_API_KEY=your_key          # 可选，知识库功能
 实验范围和约束条件。
 ```
 
-### 分步运行
+### 运行
 
 ```bash
-# 初始化
-python run_research.py init --topic your_topic.md
+# 初始化 + 交互式运行（传 .md 自动初始化）
+python run_research.py --topic your_topic.md
 
-# 按阶段推进（T001 替换为实际 topic ID）
-python run_research.py elaborate --topic T001
-python run_research.py survey --topic T001
-python run_research.py ideation --topic T001
-python run_research.py refine --idea T001-I001
-python run_research.py code-ref --idea T001-I001
-python run_research.py code --idea T001-I001
-python run_research.py experiment --idea T001-I001
-python run_research.py analyze --idea T001-I001
-python run_research.py conclude --idea T001-I001
+# 初始化 + 全自动运行
+python run_research.py --topic your_topic.md --auto
+
+# 恢复已有 topic
+python run_research.py --topic T001
+python run_research.py --topic T001 --auto
+
+# 单 idea 运行
+python run_research.py --idea T001-I001
+python run_research.py --idea T001-I001 --auto
+
+# 从指定阶段开始
+python run_research.py --idea T001-I001 --from refine
+
+# 强制跳转状态
+python run_research.py --idea T001-I001 --force conclude
 ```
 
-### 自动运行
+### 辅助查询
 
 ```bash
-# auto 模式：线性流水线
-python run_research.py auto --idea T001-I001 --start refine --max-iter 3
-
-# FSM 模式：状态机驱动，支持条件跳转和重试
-python run_research.py fsm run --topic T001          # 交互式
-python run_research.py fsm run --topic T001 --auto   # 全自动
-python run_research.py fsm run --idea T001-I001      # 单 idea
-```
-
-### 辅助命令
-
-```bash
-python run_research.py status --topic T001            # 查看研究树状态
-python run_research.py fsm status --topic T001        # 查看 FSM 状态
-python run_research.py fsm history --topic T001       # 查看状态转换历史
-python run_research.py memory --topic-id T001         # 查询经验记忆
+python run_research.py --status [--topic T001]                  # FSM 状态
+python run_research.py --history [--topic T001] [--idea T001-I001]  # 转换历史
+python run_research.py --memory [--tags t1,t2] [--phase survey]     # 经验记忆
 ```
 
 ## 目录结构

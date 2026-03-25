@@ -4,10 +4,11 @@ from shared.utils.config_helpers import load_topic_config
 from tools.file_ops import read_file, write_file
 from tools.web_search import web_search
 from tools.openalex import search_papers, search_topics
-from tools.paper_manager import read_paper_section
+from tools.paper_manager import read_paper_section, check_local_knowledge
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams,
     WebSearchParams, SearchTopicsParams, SearchPapersParams, ReadPaperSectionParams,
+    CheckLocalKnowledgeParams,
 )
 
 SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研理论审查专家。你的任务是对研究方案的理论基础进行严格的交叉验证。
@@ -77,6 +78,7 @@ class TheoryCheckAgent(BaseAgent):
         self.register_tool("search_papers", search_papers, SearchPapersParams)
         self.register_tool("web_search", web_search, WebSearchParams)
         self.register_tool("read_paper_section", read_paper_section, ReadPaperSectionParams)
+        self.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
 
     def build_prompt(self, *, theory_path: str, survey_path: str,
                      proposal_path: str, output_path: str,

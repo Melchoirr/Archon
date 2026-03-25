@@ -258,6 +258,12 @@ class AddExperienceParams(ToolParamsBase):
 
 # ── paper_manager ─────────────────────────────────────────────
 
+class CheckLocalKnowledgeParams(ToolParamsBase):
+    """检查本地知识库中是否已存在匹配的资源（论文、代码库、总结）。在下载前调用，避免重复下载。支持 paper_id、标题关键词、repo 名称/URL 模糊匹配。"""
+    query: str = Field(description="搜索词（paper_id / arXiv ID / 标题关键词 / repo 名称或 URL）")
+    resource_type: str = Field(default="all", description="资源类型: paper/repo/summary/all（默认 all）")
+
+
 class DownloadPaperParams(ToolParamsBase):
     """下载论文 PDF 并用 MinerU 解析为 Markdown，支持后续按章节阅读。
 

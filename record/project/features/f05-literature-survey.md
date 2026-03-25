@@ -5,14 +5,15 @@
 
 ## 核心文件
 - `agents/survey_helpers.py:32-152` — 搜索策略 prompt（4 阶段搜索）
-- `agents/survey_helpers.py:199-226` — `make_search_agent()`，搜索 Agent 工厂（9 个工具）
+- `agents/survey_helpers.py:199-227` — `make_search_agent()`，搜索 Agent 工厂（10 个工具，含 check_local_knowledge）
 - `agents/survey_helpers.py:344-389` — `summarize_single_paper()`，单篇摘要（单次 LLM）
 - `agents/survey_helpers.py:447-484` — `build_repo_prompt()` / `make_repo_agent()`，Repo 研究 Agent 工厂
 - `tools/openalex.py:230-260` — `search_topics()`，OpenAlex topic 搜索
 - `tools/openalex.py:261-345` — `search_papers()`，论文搜索（keyword/semantic/exact）
 - `tools/openalex.py:347-403` — `get_paper_references()` / `get_paper_citations()`，引用图遍历
 - `tools/paper_manager.py:172-273` — `_parse_pdf_zhipu()` / `_parse_pdf_mineru()`，PDF 双后端解析
-- `tools/paper_manager.py:305-358` — `download_paper()`，论文下载 + 解析
+- `tools/paper_manager.py:305-357` — `check_local_knowledge()`，预检本地知识库（论文/总结/代码库）
+- `tools/paper_manager.py:360-413` — `download_paper()`，论文下载 + 解析
 - `tools/paper_manager.py:360-465` — `read_paper_section()`，论文分段阅读（模糊匹配）
 - `agents/data_agent.py:88-161` — `DataAgent`，数据下载 + EDA（8 个工具，35 次迭代）
 
@@ -64,7 +65,7 @@
 - PDF 下载失败：标记 failed，跳过
 - Zhipu 解析失败：fallback MinerU
 - Rate limit：polite pool 0.15s，semantic 1s
-- 论文去重：基于 paper_id
+- 论文去重：基于 paper_id（download_paper 内置检查）+ check_local_knowledge 预检
 
 ## 测试方法
 ```bash
@@ -76,6 +77,11 @@ python run_research.py survey --topic T001 --step 4
 （暂无）
 
 ## 变化
+### [实现] 2026-03-25 19:42 — 新增 check_local_knowledge 预检工具
+- **目的**：让 Agent 在决策阶段就能查询本地是否已有论文/总结/代码库，避免重复下载
+- **改动**：`tools/paper_manager.py` 新增 `check_local_knowledge()` 函数，检查 index.yaml + summaries + repos；`agents/survey_helpers.py` 在 3 处 Agent 工厂注册该工具
+- **验证**：`check_local_knowledge("sundial")` 返回论文+总结匹配，`check_local_knowledge("chronos", resource_type="repo")` 返回代码库匹配，空查询返回"可以下载"
+
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 - **目的**：实现 5 步文献调研流水线
 - **改动**：新增 survey_helpers.py + openalex.py + paper_manager.py + data_agent.py

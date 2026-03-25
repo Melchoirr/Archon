@@ -6,11 +6,11 @@ from tools.research_tree import read_tree, update_idea_phase
 from tools.memory import query_memory
 from tools.web_search import web_search
 from tools.openalex import search_papers
-from tools.paper_manager import read_paper_section
+from tools.paper_manager import read_paper_section, check_local_knowledge
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams, ReadTreeParams, UpdateIdeaPhaseParams,
     QueryMemoryParams, WebSearchParams, SearchPapersParams,
-    ReadPaperSectionParams,
+    ReadPaperSectionParams, CheckLocalKnowledgeParams,
 )
 
 SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案细化专家。你的任务是将一个研究 idea 展开为完整的技术方案。
@@ -129,6 +129,7 @@ class RefinementAgent(BaseAgent):
         self.register_tool("web_search", web_search, WebSearchParams)
         self.register_tool("search_papers", search_papers, SearchPapersParams)
         self.register_tool("read_paper_section", read_paper_section, ReadPaperSectionParams)
+        self.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
 
     def build_prompt(self, *, topic_title: str, dataset_names: str = "",
                      metric_names: str = "", topic_dir: str = "",

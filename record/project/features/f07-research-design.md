@@ -6,10 +6,10 @@
 ## 核心文件
 - `agents/elaborate_agent.py:60-79` — `ElaborateAgent.__init__()`，3 个工具，12 次迭代
 - `agents/elaborate_agent.py:81-97` — `build_prompt()`，展开研究背景
-- `agents/refinement_agent.py:76-109` — `RefinementAgent.__init__()`，8 个工具，20 次迭代；system prompt 含工具表格+工作流
+- `agents/refinement_agent.py:76-109` — `RefinementAgent.__init__()`，9 个工具（含 check_local_knowledge），20 次迭代；system prompt 含工具表格+工作流
 - `agents/refinement_agent.py:111-149` — `build_prompt()`，理论深化 + 模块设计 + 可选 theory_review_path + analysis_path
-- `agents/design_agent.py:36-75` — `DesignAgent.__init__()`，7 个工具，15 次迭代（legacy）；system prompt 含工具表格+工作流
-- `agents/theory_check_agent.py:48-68` — `TheoryCheckAgent.__init__()`，6 个工具，15 次迭代
+- `agents/design_agent.py:36-75` — `DesignAgent.__init__()`，8 个工具（含 check_local_knowledge），15 次迭代（legacy）；system prompt 含工具表格+工作流
+- `agents/theory_check_agent.py:48-68` — `TheoryCheckAgent.__init__()`，7 个工具（含 check_local_knowledge），15 次迭代
 - `agents/theory_check_agent.py:69-91` — `build_prompt()`，理论交叉验证 + 创新性评估 + 因果推演
 
 ## 功能描述
@@ -67,6 +67,11 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
+### [修改] 2026-03-25 19:42 — 3 个 Agent 注册 check_local_knowledge 工具
+- **目的**：研究设计阶段可预检本地知识库已有资源
+- **改动**：`agents/design_agent.py`、`agents/refinement_agent.py`、`agents/theory_check_agent.py` 新增 import 和 register_tool
+- **验证**：import 通过
+
 ### [修改] 2026-03-24 00:13 — RefinementAgent 增加 analysis_path 参数 (`1e3166c`)
 - **目的**：analyze→refine 回退时，让 Agent 读取 analysis.md 了解实验暴露的设计问题
 - **改动**：`refinement_agent.py` `build_prompt()` 增加 `analysis_path` 参数，prompt 指示 Agent 先 read_file 了解分析结论；`orchestrator.py` `phase_refine()` 检查 analysis.md 存在则传路径

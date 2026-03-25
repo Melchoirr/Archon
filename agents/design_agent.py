@@ -6,9 +6,11 @@ from tools.research_tree import read_tree, update_idea_phase
 from tools.memory import query_memory
 from tools.web_search import web_search
 from tools.openalex import search_papers
+from tools.paper_manager import check_local_knowledge
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams, ReadTreeParams, UpdateIdeaPhaseParams,
     QueryMemoryParams, WebSearchParams, SearchPapersParams,
+    CheckLocalKnowledgeParams,
 )
 
 SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案设计专家。你的任务是将一个研究 idea 展开为详细的技术方案。
@@ -76,3 +78,4 @@ class DesignAgent(BaseAgent):
         self.register_tool("query_memory", query_memory, QueryMemoryParams)
         self.register_tool("web_search", web_search, WebSearchParams)
         self.register_tool("search_papers", search_papers, SearchPapersParams)
+        self.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)

@@ -4,7 +4,7 @@
 - **实现状态**：✅已完成
 
 ## 核心文件
-- `agents/ideation_agent.py:79-108` — `IdeationAgent.__init__(topic_dir)`，10 个工具，20 次迭代，`partial` 绑定 topic_dir 到 idea_graph 工具
+- `agents/ideation_agent.py:79-110` — `IdeationAgent.__init__(topic_dir)`，11 个工具（含 check_local_knowledge），20 次迭代，`partial` 绑定 topic_dir 到 idea_graph 工具
 - `agents/ideation_agent.py:110-144` — `build_prompt()`，组装 ideation prompt
 - `agents/ideation_agent.py:19-75` — system prompt（3+ 搜索/idea、去重、原子性、≥800 字符）
 - `tools/idea_scorer.py:62-88` — `extract_search_queries()`，LLM 提取搜索查询
@@ -66,6 +66,11 @@ python run_research.py status --topic T001
 （暂无）
 
 ## 变化
+### [修改] 2026-03-25 19:42 — IdeationAgent 注册 check_local_knowledge 工具
+- **目的**：Idea 生成时可预检本地知识库已有资源，避免搜索/引用重复内容
+- **改动**：`agents/ideation_agent.py` 新增 import 和 register_tool
+- **验证**：import 通过
+
 ### [修复] 2026-03-23 22:15 — idea_graph 绑定 topic_dir (`d081a7c`)
 - **目的**：修复 idea_graph 工具的 topic_dir 默认值为 "."，导致 idea_graph.yaml 写到项目根目录而非 topic 目录
 - **改动**：IdeationAgent 新增 topic_dir 参数，用 `functools.partial` 绑定 `add_idea_relationship` 和 `get_idea_graph` 的 topic_dir；orchestrator.py 传入 `self.topic_dir`

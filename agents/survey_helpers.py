@@ -13,7 +13,7 @@ from tools.file_ops import (
     read_file, write_file, list_directory,
 )
 from tools.paper_manager import (
-    search_paper_index,
+    search_paper_index, check_local_knowledge,
 )
 from tools.github_repo import (
     clone_repo, summarize_repo, list_repos,
@@ -21,7 +21,8 @@ from tools.github_repo import (
 from shared.models.tool_params import (
     SearchTopicsParams, SearchPapersParams, GetPaperReferencesParams, GetPaperCitationsParams,
     WebSearchParams, ReadFileParams, WriteFileParams, ListDirectoryParams,
-    SearchPaperIndexParams, CloneRepoParams, SummarizeRepoParams, ListReposParams,
+    SearchPaperIndexParams, CheckLocalKnowledgeParams,
+    CloneRepoParams, SummarizeRepoParams, ListReposParams,
 )
 
 import anthropic
@@ -220,6 +221,7 @@ def make_search_agent(config_path: str, allowed_dirs: list[str] = None) -> BaseA
     agent.register_tool("get_paper_citations", get_paper_citations, GetPaperCitationsParams)
     agent.register_tool("web_search", web_search, WebSearchParams)
     agent.register_tool("search_paper_index", search_paper_index, SearchPaperIndexParams)
+    agent.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
     agent.register_tool("read_file", read_file, ReadFileParams)
     agent.register_tool("write_file", write_file, WriteFileParams)
     agent.register_tool("list_directory", list_directory, ListDirectoryParams)
@@ -478,6 +480,7 @@ def make_repo_agent(config_path: str, allowed_dirs: list[str] = None) -> BaseAge
     agent.register_tool("clone_repo", clone_repo, CloneRepoParams)
     agent.register_tool("summarize_repo", summarize_repo, SummarizeRepoParams)
     agent.register_tool("list_repos", list_repos, ListReposParams)
+    agent.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
     agent.register_tool("read_file", read_file, ReadFileParams)
     agent.register_tool("write_file", write_file, WriteFileParams)
     agent.register_tool("list_directory", list_directory, ListDirectoryParams)
@@ -796,4 +799,5 @@ def make_code_ref_agent(allowed_dirs: list[str] = None) -> BaseAgent:
     agent.register_tool("clone_repo", clone_repo, CloneRepoParams)
     agent.register_tool("summarize_repo", summarize_repo, SummarizeRepoParams)
     agent.register_tool("list_repos", list_repos, ListReposParams)
+    agent.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
     return agent

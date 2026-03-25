@@ -11,7 +11,7 @@
 - `shared/models/fsm.py:10-135` — FSM 模型（FSMState, AnalysisVerdict, TheoryVerdict(含 derivative), DebugVerdict, SurveyVerdict, *Decision, TransitionRecord, IdeaFSMState, FSMSnapshot）
 - `shared/models/paper.py:8-43` — 论文模型（Author, ExternalIds, Paper, PaperIndexEntry）
 - `shared/models/memory.py:10-19` — `ExperienceEntry`，经验日志条目
-- `shared/models/tool_params.py:12-331` — `ToolParamsBase` + 30+ 工具参数 Pydantic 模型（含丰富 docstring：使用场景/返回格式/示例）
+- `shared/models/tool_params.py:12-426` — `ToolParamsBase` + 30+ 工具参数 Pydantic 模型（含丰富 docstring：使用场景/返回格式/示例），含 `CheckLocalKnowledgeParams`
 - `shared/models/enums.py:6-65` — 枚举定义（PhaseState, IdeaStatus, IdeaCategory, ExperienceType, RelationType, PhaseName）
 - `shared/utils/config_helpers.py:8-24` — `load_topic_config()`
 - `shared/templates/experiment_infrastructure.md` — 实验代码基础设施规范
@@ -76,6 +76,11 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
+### [实现] 2026-03-25 19:42 — 新增 CheckLocalKnowledgeParams 参数模型
+- **目的**：为 check_local_knowledge 工具提供 Pydantic 参数校验
+- **改动**：`shared/models/tool_params.py` 新增 `CheckLocalKnowledgeParams(query, resource_type)`；`tools/__init__.py` 导出新模型
+- **验证**：`CheckLocalKnowledgeParams.to_schema()` 输出正确 JSON Schema
+
 ### [修改] 2026-03-24 00:11 — 丰富 18 个工具的 docstring（使用场景/返回/示例） (`d96766b`)
 - **目的**：LLM 通过 tool schema description 获取工具使用指导，原 docstring 过于简略（一句话）
 - **改动**：`shared/models/tool_params.py` 为 ReadFile/WriteFile/AppendFile/ListDirectory/ReadTree/UpdateIdeaPhase/UpdateIdeaStatus/UpdateSurveyStatus/UpdateElaborateStatus/AddIdea/AddExperimentStep/UpdateIteration/QueryMemory/AddExperience/DownloadPaper/ReadPaperSection/RunCommand/AnalyzeImage/AnalyzePlots 共 18 个 Params 类补充结构化 docstring

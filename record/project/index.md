@@ -89,7 +89,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F05 — 文献调研管道 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/survey_helpers.py`, `tools/openalex.py`, `tools/paper_manager.py`, `agents/data_agent.py`
 - **上游**：F01, F02, F07 / **下游**：F06, F07
-- **最后变更**：2026-03-11 17:12
+- **最后变更**：2026-03-25 19:42
 
 <details><summary>功能概要</summary>
 
@@ -105,7 +105,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F06 — Idea 生成与评分 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/ideation_agent.py`, `tools/idea_scorer.py`, `tools/idea_graph.py`
 - **上游**：F05, F11 / **下游**：F07
-- **最后变更**：2026-03-23 22:15
+- **最后变更**：2026-03-25 19:42
 
 <details><summary>功能概要</summary>
 
@@ -121,7 +121,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F07 — 研究设计 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/elaborate_agent.py`, `agents/refinement_agent.py`, `agents/design_agent.py`, `agents/theory_check_agent.py`
 - **上游**：F01, F05, F06 / **下游**：F04, F08
-- **最后变更**：2026-03-24 00:13
+- **最后变更**：2026-03-25 19:42
 
 <details><summary>功能概要</summary>
 
@@ -169,7 +169,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F10 — 数据模型与路径管理 · ✅已完成 · 🟢在用
 - **核心文件**：`shared/paths.py`, `shared/path_guard.py`, `shared/models/`, `shared/templates/`
 - **上游**：无 / **下游**：F01-F12 全部
-- **最后变更**：2026-03-24 00:11
+- **最后变更**：2026-03-25 19:42
 
 <details><summary>功能概要</summary>
 

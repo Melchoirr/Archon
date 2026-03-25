@@ -7,7 +7,7 @@ from .file_ops import read_file, write_file, append_file, list_directory
 from .bash_exec import run_command
 from .research_tree import ResearchTreeService
 from .memory import query_memory, add_experience
-from .paper_manager import download_paper, read_paper_section, list_papers
+from .paper_manager import download_paper, read_paper_section, list_papers, check_local_knowledge
 from .claude_code import claude_write_module, claude_fix_error, claude_review
 from .config_updater import update_config_section
 from .knowledge_base import KnowledgeBaseManager, search_knowledge_base
@@ -38,7 +38,7 @@ from shared.models.tool_params import (
     # memory
     QueryMemoryParams, AddExperienceParams,
     # paper_manager
-    DownloadPaperParams, ReadPaperSectionParams, ListPapersParams,
+    CheckLocalKnowledgeParams, DownloadPaperParams, ReadPaperSectionParams, ListPapersParams,
     # claude_code
     ClaudeWriteModuleParams, ClaudeFixErrorParams, ClaudeReviewParams,
     # config_updater

@@ -302,6 +302,74 @@ def _parse_pdf(pdf_path: str, paper_id: str, md_dir: str = "") -> tuple[str | No
     return None, ""
 
 
+def check_local_knowledge(query: str, resource_type: str = "all", base_dir: str = "") -> str:
+    """检查本地知识库中是否已存在匹配的资源（论文、代码库、总结）。
+
+    在下载前调用此工具，避免重复下载已有内容。支持按 paper_id、标题关键词、
+    repo 名称/URL 模糊匹配。
+
+    Args:
+        query: 搜索词（paper_id / arXiv ID / 标题关键词 / repo 名称或 URL）
+        resource_type: 资源类型 paper/repo/summary/all（默认 all）
+        base_dir: 论文存储根目录（默认 knowledge/papers）
+    Returns:
+        匹配结果的描述，包含已存在资源的路径和状态
+    """
+    results = []
+    query_lower = query.lower().strip()
+
+    # --- 论文检查 ---
+    if resource_type in ("all", "paper"):
+        paths = _get_paths(base_dir)
+        index = _load_index(paths["index_path"])
+        for pid, info in index.items():
+            title_str = info.get("title", "")
+            # 精确 ID 匹配
+            if query_lower == pid.lower() or query_lower == info.get("arxiv_id", "").lower():
+                has_pdf = bool(info.get("pdf_path") and os.path.exists(info["pdf_path"]))
+                has_md = bool(info.get("md_path") and os.path.exists(info["md_path"]))
+                results.append(
+                    f"[论文·精确匹配] {pid} — {title_str}\n"
+                    f"  PDF: {'有 ' + info.get('pdf_path', '') if has_pdf else '无'}\n"
+                    f"  Markdown: {'有 ' + info.get('md_path', '') if has_md else '无'}"
+                )
+            # 标题模糊匹配
+            elif query_lower in title_str.lower() or query_lower in pid.lower():
+                has_md = bool(info.get("md_path") and os.path.exists(info["md_path"]))
+                results.append(
+                    f"[论文·标题匹配] {pid} — {title_str} (Markdown: {'有' if has_md else '无'})"
+                )
+
+    # --- 总结检查 ---
+    if resource_type in ("all", "summary"):
+        paths = _get_paths(base_dir)
+        summaries_dir = paths["summaries_dir"]
+        if os.path.isdir(summaries_dir):
+            for fname in os.listdir(summaries_dir):
+                if fname.endswith(".md") and query_lower in fname.lower():
+                    results.append(f"[总结] {os.path.join(summaries_dir, fname)}")
+
+    # --- 代码库检查 ---
+    if resource_type in ("all", "repo"):
+        repos_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge", "repos")
+        if os.path.isdir(repos_dir):
+            # 从 URL 提取 repo 名称
+            repo_name = query.rstrip("/").split("/")[-1].replace(".git", "").lower()
+            for d in os.listdir(repos_dir):
+                if not os.path.isdir(os.path.join(repos_dir, d)):
+                    continue
+                if query_lower in d.lower() or repo_name in d.lower():
+                    full_path = os.path.join(repos_dir, d)
+                    has_summary = os.path.exists(os.path.join(full_path, "SUMMARY.md"))
+                    results.append(
+                        f"[代码库] {full_path} (SUMMARY: {'有' if has_summary else '无'})"
+                    )
+
+    if not results:
+        return f"本地知识库中未找到与 '{query}' 匹配的资源，可以下载。"
+    return f"找到 {len(results)} 个匹配资源:\n\n" + "\n\n".join(results)
+
+
 def download_paper(paper_id: str, title: str = "", base_dir: str = "") -> str:
     """下载论文 PDF 并解析为 Markdown（智谱API优先，MinerU fallback）。
 

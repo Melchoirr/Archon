@@ -6,13 +6,14 @@ from tools.research_tree import add_idea_to_tree, read_tree
 from tools.memory import query_memory
 from tools.web_search import web_search
 from tools.openalex import search_papers
+from tools.paper_manager import check_local_knowledge
 from functools import partial
 from tools.idea_graph import (
     add_idea_relationship, get_idea_graph,
 )
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams, ListDirectoryParams,
-    AddIdeaParams, ReadTreeParams, QueryMemoryParams,
+    AddIdeaParams, ReadTreeParams, QueryMemoryParams, CheckLocalKnowledgeParams,
     WebSearchParams, SearchPapersParams,
     AddRelationshipParams, GetGraphParams,
 )
@@ -99,6 +100,7 @@ class IdeationAgent(BaseAgent):
         self.register_tool("query_memory", query_memory, QueryMemoryParams)
         self.register_tool("web_search", web_search, WebSearchParams)
         self.register_tool("search_papers", search_papers, SearchPapersParams)
+        self.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
         # 绑定 topic_dir，Agent 无需手动传递
         self.register_tool("add_idea_relationship",
                            partial(add_idea_relationship, topic_dir=topic_dir),

@@ -1050,47 +1050,6 @@ class ResearchOrchestrator:
 
         return result
 
-    def phase_experiment_loop(self, idea_id: str, step_id: str = None,
-                              max_iter: int = None) -> str:
-        """实验迭代循环：experiment → analyze → experiment → analyze → ..."""
-        if max_iter is None:
-            max_iter = self.default_max_iter
-
-        if not step_id:
-            step_id = "S01"
-
-        # 注册实验步骤
-        step_name = step_id.replace("S", "step_")
-        self.tree_service.add_experiment_step(idea_id, step_name, max_iter)
-
-        results = []
-        for v in range(1, max_iter + 1):
-            print(f"\n--- 实验迭代 V{v}/{max_iter} ---")
-
-            # 运行实验
-            exp_result = self.phase_experiment(idea_id, step_id, version=v)
-            results.append(f"V{v} experiment: {exp_result[:100]}")
-
-            # 分析结果
-            analysis_result = self.phase_analyze(idea_id, step_id=step_id, version=v)
-            results.append(f"V{v} analysis: {analysis_result[:100]}")
-
-            # 检查是否提前终止（分析建议停止）
-            v_dir = self.paths.version_dir(idea_id, step_id, v)
-            if v_dir:
-                v_analysis = str(v_dir / "analysis.md")
-                if os.path.exists(v_analysis):
-                    analysis_content = read_file(v_analysis)
-                    if "建议停止" in analysis_content or "无需继续" in analysis_content:
-                        print(f"分析建议停止迭代，在 V{v} 终止。")
-                        # 标记剩余迭代为 skipped
-                        for sv in range(v + 1, max_iter + 1):
-                            self.tree_service.update_iteration(
-                                idea_id, step_id, sv, "skipped")
-                        break
-
-        return "\n".join(results)
-
     def phase_analyze(self, idea_id: str, step_id: str = None,
                       version: int = None) -> str:
         """分析实验结果"""
@@ -1301,50 +1260,6 @@ class ResearchOrchestrator:
         result = self.phase_survey(round_num=current_rounds + 1)
         self._log_phase_end("deep_survey", summary=result[:200])
         return result
-
-    def phase_auto(self, idea_id: str, start_phase: str = "refine",
-                   ref_ideas: list = None, max_iter: int = None) -> str:
-        """自动执行从指定阶段到结论的完整流程"""
-        phases = ["refine", "code_reference", "code", "experiment_loop", "analyze", "conclude"]
-        start_idx = 0
-        for i, p in enumerate(phases):
-            if p == start_phase:
-                start_idx = i
-                break
-
-        results = []
-        for phase in phases[start_idx:]:
-            print(f"\n{'='*60}")
-            print(f"  Auto: 执行 {phase}")
-            print(f"{'='*60}")
-
-            if phase == "refine":
-                r = self.phase_refine(idea_id, ref_ideas)
-            elif phase == "code_reference":
-                r = self.phase_code_reference(idea_id)
-            elif phase == "code":
-                r = self.phase_code(idea_id, ref_ideas)
-            elif phase == "experiment_loop":
-                r = self.phase_experiment_loop(idea_id, max_iter=max_iter)
-            elif phase == "analyze":
-                r = self.phase_analyze(idea_id)
-            elif phase == "conclude":
-                r = self.phase_conclude(idea_id, ref_ideas)
-            else:
-                r = ""
-
-            results.append(f"{phase}: {r[:100]}")
-
-            # 暂停让用户确认
-            try:
-                action = input(f"\n{phase} 完成。[继续(c) / 退出(q)]: ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print(f"\n  中断，退出")
-                break
-            if action == "q":
-                break
-
-        return "\n".join(results)
 
     # === 辅助方法 ===
 
