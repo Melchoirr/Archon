@@ -70,7 +70,7 @@ print(web_search("time series forecasting", max_results=3))
 （暂无）
 
 ## 变化
-### [重构] 2026-03-26 15:49 — research_tree → idea_registry 服务替换 (`pending`)
+### [重构] 2026-03-26 15:49 — research_tree → idea_registry 服务替换 (`7a63dca`)
 - **目的**：消除 research_tree 双轨制，IdeaRegistryService 替代 ResearchTreeService
 - **改动**：新增 `tools/idea_registry.py`（IdeaRegistryService + read_research_status + CRUD）；删除 `tools/research_tree.py`
 - **验证**：import 通过

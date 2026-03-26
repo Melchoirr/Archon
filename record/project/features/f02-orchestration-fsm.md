@@ -87,7 +87,7 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [重构] 2026-03-26 15:49 — FSM 全面接管：消除 research_tree 双轨制 (`pending`)
+### [重构] 2026-03-26 15:49 — FSM 全面接管：消除 research_tree 双轨制 (`7a63dca`)
 - **目的**：消除 FSM + research_tree 双轨并行导致的状态不一致和载入失败问题
 - **改动**：
   - `agents/fsm_engine.py` — 删除 `tree_service` 依赖、`_mark_phase_completed()`、`_recover_from_tree()`、`STATE_TO_PHASE`；新增 `_recover_from_filesystem()`（从产出文件推断状态）、原子写入、`_record_transition()` 写 audit_log.yaml、`feedback` 改为运行时局部变量、survey 轮次用 `topic_retry_counts` 替代 history 扫描

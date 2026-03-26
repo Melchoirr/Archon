@@ -78,7 +78,7 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
-### [重构] 2026-03-26 15:49 — 模型体系重组：消除 research_tree，三文件分离 (`pending`)
+### [重构] 2026-03-26 15:49 — 模型体系重组：消除 research_tree，三文件分离 (`7a63dca`)
 - **目的**：消除 FSM + research_tree 双轨并行，清晰分离恢复数据/Idea 元数据/审计记录
 - **改动**：
   - 新增 `shared/models/idea_registry.py`（Score, Relationship, TopicMeta, IdeaEntry, IdeaRegistry）
