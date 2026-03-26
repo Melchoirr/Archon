@@ -87,6 +87,13 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [重构] 2026-03-26 16:53 — Orchestrator 消除硬编码路径，统一使用 PathManager (``)
+- **目的**：消除 orchestrator.py 中所有硬编码 `os.path.join(self.project_root, "knowledge", ...)` 的 fallback 模式，统一走 `self.paths.*` 属性
+- **改动**：
+  - `agents/orchestrator.py` — 移除 6 处 `if self.topic_dir ... else os.path.join(...)` fallback 分支（phase_elaborate、phase_survey、phase_ideation 中 context_md/survey_dir/baselines_md/datasets_md/metrics_md/survey_md/ideas_dir）；1 处错误路径 `os.path.join(self.project_root, "ideas")` → `self.paths.ideas_dir`；1 处 `os.path.join(ideas_dir, d, "proposal.md")` → `self.paths.idea_proposal(d)`；7 处 `os.makedirs(..., exist_ok=True)` → `self.paths.ensure_dir(...)`
+  - 保留所有动态文件名构造（目录内迭代拼接文件名的 os.path.join）
+- **验证**：`from agents.orchestrator import ResearchOrchestrator` import 通过
+
 ### [重构] 2026-03-26 15:49 — FSM 全面接管：消除 research_tree 双轨制 (`7a63dca`)
 - **目的**：消除 FSM + research_tree 双轨并行导致的状态不一致和载入失败问题
 - **改动**：
