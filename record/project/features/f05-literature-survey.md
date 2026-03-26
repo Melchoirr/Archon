@@ -77,7 +77,7 @@ python run_research.py survey --topic T001 --step 4
 （暂无）
 
 ## 变化
-### [修改] 2026-03-26 10:18 — MinerU fallback 切换到 pipeline 轻量模式 (`pending`)
+### [修改] 2026-03-26 10:18 — MinerU fallback 切换到 pipeline 轻量模式 (`d4e0e0a`)
 - **目的**：MinerU 默认 hybrid-auto-engine 后端解析 23 页 PDF 需 26 分钟，不可用。切换到 pipeline 模式 + 关闭公式/表格解析，耗时降至 ~1 分钟
 - **改动**：`tools/paper_manager.py` `_parse_pdf_mineru()` 命令行增加 `-f false -t false` 关闭公式/表格解析；超时从 600s 缩短到 180s
 - **验证**：`mineru -b pipeline -m txt -d mps -f false -t false` 实测 8.4M/23 页 PDF 耗时 63 秒，输出 markdown 质量良好

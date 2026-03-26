@@ -63,7 +63,7 @@ python run_research.py status
 （暂无）
 
 ## 变化
-### [修复] 2026-03-26 10:18 — config.yaml 缺失时报错退出替代静默回退 (`pending`)
+### [修复] 2026-03-26 10:18 — config.yaml 缺失时报错退出替代静默回退 (`d4e0e0a`)
 - **目的**：topic 目录缺少 config.yaml 时不应回退到项目根目录的 config.yaml（可能不存在或配置不匹配），改为明确报错
 - **改动**：`run_research.py` `_get_fsm()` 中 config_path 不存在时打印错误信息并 `sys.exit(1)`，不再回退到根目录 `config.yaml`
 - **验证**：未测试

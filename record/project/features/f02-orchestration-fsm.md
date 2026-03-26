@@ -78,7 +78,7 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [修复] 2026-03-26 10:18 — FSM 快照序列化修复 + 损坏快照自动恢复 (`pending`)
+### [修复] 2026-03-26 10:18 — FSM 快照序列化修复 + 损坏快照自动恢复 (`d4e0e0a`)
 - **目的**：修复 StrEnum 等类型写入 YAML 时带 Python 对象标签的问题；加载损坏快照恢复后自动覆写文件
 - **改动**：`agents/fsm_engine.py` `_persist_snapshot()` 改用 `model_dump(mode="json")` 确保纯字符串序列化；`_load_snapshot()` 从 research_tree 恢复后立即覆写 fsm_state.yaml
 - **验证**：未测试
