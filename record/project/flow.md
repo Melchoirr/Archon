@@ -277,8 +277,9 @@ flowchart TD
 - **关键分支**（AnalysisEvaluator 判定）：
   - `success` → 进入 conclude
   - `tune` → 返回 experiment（调参，version+1）
-  - `enrich` → 返回 experiment（加特征）
+  - `enrich` → 返回 refine（增强模块/补充组件）
   - `restructure` → 返回 refine（重设计）
+  - `need_literature` → 返回 refine（补充文献，由 refine agent 搜索）
   - `code_bug` → 返回 debug
   - `abandon` → 放弃此 idea
 

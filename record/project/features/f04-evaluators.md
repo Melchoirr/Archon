@@ -58,6 +58,11 @@ result = evaluator.evaluate({"analysis_md": "...", "metrics_json": "..."})
 （暂无）
 
 ## 变化
+### [修改] 2026-03-26 19:09 — need_literature verdict 路由变更 (`pending`)
+- **目的**：deep_survey 被移除，need_literature 改路由到 refine
+- **改动**：`agents/evaluators/analysis_evaluator.py` — 更新 need_literature 描述，说明将回退到 refine 由 refine agent 搜索补充论文
+- **验证**：import 通过
+
 ### [修改] 2026-03-23 23:05 — TheoryEvaluator 扩展创新性 + 因果推演 + 跨 idea 去重 (`535b346`)
 - **目的**：评估 idea 的创新性、因果机制可信度，并检测同 batch idea 重复
 - **改动**：`theory_evaluator.py` SYSTEM_PROMPT 增加 derivative verdict 和 6 个新字段；`build_prompt()` 增加 `other_ideas_summary` 参数；`parse_decision()` 解析新字段

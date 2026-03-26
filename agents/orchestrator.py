@@ -1179,17 +1179,6 @@ class ResearchOrchestrator:
         print(f"\nDebug 完成! 请 review: {src_dir}/debug_report.md")
         return result
 
-    def phase_deep_survey(self, queries: list = None, round_num: int = 2) -> str:
-        """深度文献调研：针对特定方向补充文献
-
-        Args:
-            queries: 补充搜索关键词（暂未使用）
-            round_num: 调研轮次，默认 2（表示第二轮深度调研）
-        """
-        self._log_phase_start("deep_survey")
-        result = self.phase_survey(round_num=round_num)
-        self._log_phase_end("deep_survey", summary=result[:200])
-        return result
 
     # === 辅助方法 ===
 

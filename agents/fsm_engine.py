@@ -38,7 +38,6 @@ MAX_RETRIES = {
 TOPIC_TRANSITIONS = {
     "elaborate": "survey",
     "survey": "ideation",
-    "deep_survey": "ideation",
     "ideation": "completed",
 }
 
@@ -53,7 +52,6 @@ IDEA_LINEAR_TRANSITIONS = {
 # 需要用户确认的转换
 USER_CONFIRM_TRANSITIONS = {
     ("analyze", "refine"),
-    ("analyze", "deep_survey"),
     ("analyze", "abandoned"),
     ("theory_check", "abandoned"),
     ("theory_check", "refine"),
@@ -63,11 +61,11 @@ USER_CONFIRM_TRANSITIONS = {
 
 # 用户交互选项
 TOPIC_OPTIONS = {
-    "e": "elaborate", "s": "survey", "d": "deep_survey",
+    "e": "elaborate", "s": "survey",
     "i": "ideation", "q": "_quit",
 }
 IDEA_OPTIONS = {
-    "e": "experiment", "r": "refine", "d": "deep_survey",
+    "e": "experiment", "r": "refine",
     "a": "abandoned", "c": "conclude", "q": "_quit",
 }
 
@@ -286,7 +284,7 @@ class ResearchFSM:
     def _execute_topic_state(self, state: str) -> str:
         if state == "elaborate":
             return self.orch.phase_elaborate()
-        elif state in ("survey", "deep_survey"):
+        elif state == "survey":
             round_num = self.snapshot.topic_retry_counts.get("survey", 0) + 1
             return self.orch.phase_survey(round_num=round_num)
         elif state == "ideation":
@@ -307,7 +305,6 @@ class ResearchFSM:
                 idea_id, step_id=idea_fsm.step_id, version=idea_fsm.version),
             "analyze": lambda: self.orch.phase_analyze(
                 idea_id, step_id=idea_fsm.step_id, version=idea_fsm.version),
-            "deep_survey": lambda: self.orch.phase_survey(),
             "conclude": lambda: self.orch.phase_conclude(idea_id),
         }
         handler = dispatch.get(state)
@@ -350,7 +347,7 @@ class ResearchFSM:
             AnalysisVerdict.code_bug: "debug",
             AnalysisVerdict.enrich: "refine",
             AnalysisVerdict.restructure: "refine",
-            AnalysisVerdict.need_literature: "deep_survey",
+            AnalysisVerdict.need_literature: "refine",
             AnalysisVerdict.abandon: "abandoned",
         }
         if decision.verdict == AnalysisVerdict.success and decision.expectations_met_ratio >= 0.7:

@@ -32,7 +32,7 @@ suggested_changes:
 - **enrich**: 方案核心有效但细节不足，需要增强模块或补充组件
 - **restructure**: 方案根本方向需要调整，需要大幅修改设计
 - **code_bug**: 指标异常（NaN、极端值、不合理结果），怀疑实现 bug
-- **need_literature**: 分析中发现理论基础不足，需要补充文献调研
+- **need_literature**: 分析中发现理论基础不足，需要补充文献（将回退到 refine，由 refine agent 搜索补充论文）
 - **abandon**: 多次迭代无改进，理论基础被证伪，或成本收益比过低
 
 ## 注意

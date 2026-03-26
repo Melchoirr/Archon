@@ -29,7 +29,7 @@
 **ResearchFSM**：有限状态机
 - Topic 级：elaborate → survey → ideation → completed
 - Idea 级：refine → theory_check → code_reference → code → debug → experiment → analyze → conclude
-- 评估器驱动的非线性转换（回退、重试）
+- 评估器驱动的非线性转换（回退、重试）；`need_literature` verdict 路由到 refine（由 refine agent 搜索补充论文）
 - **两种运行模式**：interactive（默认，用户确认回退转换，无重试限制）/ auto（跳过确认，MAX_RETRIES 控制上限）
 - 路由方法纯做质量评估，重试策略由上层按模式决定
 - 状态快照持久化到 `fsm_state.yaml`
@@ -87,6 +87,15 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [重构] 2026-03-26 19:09 — 移除 deep_survey 状态，need_literature 改路由到 refine (`pending`)
+- **目的**：deep_survey 实质是完整 survey 重跑，与 refine 的补充文献搜索重叠且不传递 analyze 反馈，删除该状态简化 FSM
+- **改动**：
+  - `shared/models/fsm.py` — 删除 `FSMState.deep_survey` 枚举值
+  - `agents/fsm_engine.py` — 删除 TOPIC_TRANSITIONS/USER_CONFIRM_TRANSITIONS/TOPIC_OPTIONS/IDEA_OPTIONS/dispatch 中的 deep_survey 引用；`_execute_topic_state` 不再匹配 deep_survey；`_route_analysis` 中 `need_literature` 从 `deep_survey` 改路由到 `refine`
+  - `agents/orchestrator.py` — 删除 `phase_deep_survey()` 方法
+  - `agents/evaluators/analysis_evaluator.py` — 更新 need_literature 描述说明新行为
+- **验证**：三个模块 import 通过
+
 ### [重构] 2026-03-26 16:53 — Orchestrator 消除硬编码路径，统一使用 PathManager (`cd282c6`)
 - **目的**：消除 orchestrator.py 中所有硬编码 `os.path.join(self.project_root, "knowledge", ...)` 的 fallback 模式，统一走 `self.paths.*` 属性
 - **改动**：

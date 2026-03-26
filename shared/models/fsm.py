@@ -12,7 +12,6 @@ class FSMState(StrEnum):
     # Topic 级
     elaborate = "elaborate"
     survey = "survey"
-    deep_survey = "deep_survey"
     ideation = "ideation"
     # Idea 级
     refine = "refine"
