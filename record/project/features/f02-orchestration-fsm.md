@@ -87,7 +87,7 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [重构] 2026-03-26 19:09 — 移除 deep_survey 状态，need_literature 改路由到 refine (`pending`)
+### [重构] 2026-03-26 19:09 — 移除 deep_survey 状态，need_literature 改路由到 refine (`3bed669`)
 - **目的**：deep_survey 实质是完整 survey 重跑，与 refine 的补充文献搜索重叠且不传递 analyze 反馈，删除该状态简化 FSM
 - **改动**：
   - `shared/models/fsm.py` — 删除 `FSMState.deep_survey` 枚举值

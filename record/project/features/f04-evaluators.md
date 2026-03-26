@@ -58,7 +58,7 @@ result = evaluator.evaluate({"analysis_md": "...", "metrics_json": "..."})
 （暂无）
 
 ## 变化
-### [修改] 2026-03-26 19:09 — need_literature verdict 路由变更 (`pending`)
+### [修改] 2026-03-26 19:09 — need_literature verdict 路由变更 (`3bed669`)
 - **目的**：deep_survey 被移除，need_literature 改路由到 refine
 - **改动**：`agents/evaluators/analysis_evaluator.py` — 更新 need_literature 描述，说明将回退到 refine 由 refine agent 搜索补充论文
 - **验证**：import 通过
