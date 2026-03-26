@@ -95,38 +95,6 @@ def _find_topic_dir_by_md(md_ref: str) -> str | None:
     return None
 
 
-def _parse_topic_md(md_path: str) -> dict:
-    """解析 topic markdown 文件，提取结构化信息。"""
-    with open(md_path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    result = {"title": "", "domain": "", "keywords": [], "description": "", "scope": ""}
-
-    h1 = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
-    if h1:
-        result["title"] = h1.group(1).strip()
-
-    sections = re.split(r"^##\s+", content, flags=re.MULTILINE)
-    for section in sections[1:]:
-        lines = section.strip().split("\n")
-        header = lines[0].strip().lower()
-        body = "\n".join(lines[1:]).strip()
-
-        if "领域" in header or "domain" in header:
-            result["domain"] = body.strip()
-        elif "关键词" in header or "keyword" in header:
-            result["keywords"] = [
-                line.lstrip("- ").strip()
-                for line in body.split("\n")
-                if line.strip() and line.strip().startswith("-")
-            ]
-        elif "描述" in header or "description" in header:
-            result["description"] = body
-        elif "范围" in header or "scope" in header:
-            result["scope"] = body
-
-    return result
-
 
 def _make_topic_brief(title: str, md_path: str = None) -> str:
     """从标题或 md 文件名生成简短目录名（纯 ASCII）"""
@@ -251,23 +219,27 @@ def do_init(md_ref: str) -> str:
         print(f"  ERROR: 找不到 topic 文件: {md_ref}")
         sys.exit(1)
 
-    # 解析 md
-    topic_info = _parse_topic_md(md_path)
-    if not topic_info["title"]:
-        print(f"  ERROR: md 文件中没有找到 # 标题")
-        sys.exit(1)
+    # 读取 md 内容（不要求任何格式）
+    with open(md_path, "r", encoding="utf-8") as f:
+        md_content = f.read().strip()
+
+    # 尝试从内容提取标题，否则用文件名
+    topic_title = ""
+    h1 = re.search(r"^#\s+(.+)$", md_content, re.MULTILINE)
+    if h1:
+        topic_title = h1.group(1).strip()
+    if not topic_title:
+        topic_title = os.path.splitext(os.path.basename(md_path))[0].replace("_", " ").title()
 
     print(f"  读取课题文件: {md_path}")
-    print(f"  标题: {topic_info['title']}")
-    print(f"  领域: {topic_info['domain']}")
-    print(f"  关键词: {topic_info['keywords']}")
+    print(f"  标题: {topic_title}")
 
     # 分配 topic 编号
     project_root = os.path.dirname(os.path.abspath(__file__))
     _pm = PathManager(project_root)
     _rs = IdeaRegistryService(_pm)
     topic_id = _rs.next_topic_id()
-    brief = _make_topic_brief(topic_info["title"], md_path)
+    brief = _make_topic_brief(topic_title, md_path)
     topic_dir = os.path.join("topics", f"{topic_id}_{brief}")
     os.makedirs(topic_dir, exist_ok=True)
 
@@ -285,8 +257,8 @@ def do_init(md_ref: str) -> str:
     registry = IdeaRegistry(topic=TopicMeta(
         topic_id=topic_id,
         topic_brief=brief,
-        topic=topic_info["title"],
-        description=topic_info["description"],
+        topic=topic_title,
+        description=md_content,
     ))
     topic_paths = PathManager(project_root, topic_dir)
     topic_rs = IdeaRegistryService(topic_paths)

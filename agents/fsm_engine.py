@@ -73,10 +73,17 @@ class ResearchFSM:
         self.auto = auto
         self.snapshot = self._load_snapshot()
 
-        # 延迟初始化评估器（避免循环导入）
+        # 延迟初始化（避免循环导入）
+        self._orch = None
         self._evaluators = None
-        # 延迟初始化 IdeaRegistryService（避免循环导入）
         self._registry = None
+
+    @property
+    def orch(self):
+        if self._orch is None:
+            from agents.orchestrator import ResearchOrchestrator
+            self._orch = ResearchOrchestrator(topic_dir=str(self.paths.topic_dir))
+        return self._orch
 
     @property
     def registry(self):
@@ -366,108 +373,44 @@ class ResearchFSM:
     # ── 状态执行 ─────────────────────────────────────────────
 
     def _execute_topic_state(self, state: str) -> str:
-        """调用 orchestrator 方法执行 topic 级状态"""
-        from agents.orchestrator import ResearchOrchestrator
-        orch = ResearchOrchestrator(
-            topic_dir=str(self.paths.topic_dir),
-        )
-
+        """委托 orchestrator 执行 topic 级状态"""
         if state == "elaborate":
-            return orch.phase_elaborate()
+            return self.orch.phase_elaborate()
         elif state in ("survey", "deep_survey"):
             round_num = self.snapshot.topic_retry_counts.get("survey", 0) + 1
-            return orch.phase_survey(round_num=round_num)
+            return self.orch.phase_survey(round_num=round_num)
         elif state == "ideation":
-            return orch.phase_ideation()
+            return self.orch.phase_ideation()
         else:
             logger.warning(f"未知的 topic 状态: {state}")
             return ""
 
     def _execute_idea_state(self, state: str, idea_id: str,
                             idea_fsm: IdeaFSMState, feedback: str = "") -> str:
-        """调用 orchestrator 方法执行 idea 级状态"""
-        from agents.orchestrator import ResearchOrchestrator
-        orch = ResearchOrchestrator(
-            topic_dir=str(self.paths.topic_dir),
-        )
-
+        """委托 orchestrator 执行 idea 级状态"""
         if state == "refine":
-            return orch.phase_refine(idea_id)
+            return self.orch.phase_refine(idea_id)
         elif state == "theory_check":
-            return self._run_theory_check(idea_id, idea_fsm, feedback)
+            return self.orch.phase_theory_check(idea_id, feedback=feedback)
         elif state == "code_reference":
-            return orch.phase_code_reference(idea_id)
+            return self.orch.phase_code_reference(idea_id)
         elif state == "code":
-            return orch.phase_code(idea_id)
+            return self.orch.phase_code(idea_id)
         elif state == "debug":
-            return self._run_debug(idea_id, idea_fsm)
+            return self.orch.phase_debug(idea_id)
         elif state == "experiment":
-            return orch.phase_experiment(
+            return self.orch.phase_experiment(
                 idea_id, step_id=idea_fsm.step_id, version=idea_fsm.version)
         elif state == "analyze":
-            return orch.phase_analyze(
+            return self.orch.phase_analyze(
                 idea_id, step_id=idea_fsm.step_id, version=idea_fsm.version)
         elif state == "deep_survey":
-            return orch.phase_survey()
+            return self.orch.phase_survey()
         elif state == "conclude":
-            return orch.phase_conclude(idea_id)
+            return self.orch.phase_conclude(idea_id)
         else:
             logger.warning(f"未知的 idea 状态: {state}")
             return ""
-
-    def _run_theory_check(self, idea_id: str, idea_fsm: IdeaFSMState,
-                          feedback: str = "") -> str:
-        """运行 TheoryCheckAgent"""
-        from agents.theory_check_agent import TheoryCheckAgent
-
-        agent = TheoryCheckAgent(str(self.paths.topic_dir))
-
-        refinement_dir = self.paths.idea_refinement_dir(idea_id)
-        if not refinement_dir:
-            return f"未找到 refinement 目录: {idea_id}"
-
-        theory_path = str(refinement_dir / "theory.md")
-        survey_path = str(self.paths.survey_md)
-        proposal_path = str(self.paths.idea_proposal(idea_id))
-        output_path = str(refinement_dir / "theory_review.md")
-
-        prompt = agent.build_prompt(
-            theory_path=theory_path,
-            survey_path=survey_path,
-            proposal_path=proposal_path,
-            output_path=output_path,
-            feedback=feedback,
-        )
-
-        return agent.run(prompt)
-
-    def _run_debug(self, idea_id: str, idea_fsm: IdeaFSMState) -> str:
-        """运行 DebugAgent"""
-        from agents.orchestrator import ResearchOrchestrator
-
-        orch = ResearchOrchestrator(
-            topic_dir=str(self.paths.topic_dir),
-        )
-
-        idea_dir = self.paths.idea_dir(idea_id)
-        if not idea_dir:
-            return f"未找到 idea 目录: {idea_id}"
-
-        analysis_path = ""
-        analysis_file = idea_dir / "analysis.md"
-        if analysis_file.exists():
-            analysis_path = str(analysis_file)
-
-        debug_report_path = ""
-        debug_report_file = idea_dir / "src" / "debug_report.md"
-        if debug_report_file.exists():
-            debug_report_path = str(debug_report_file)
-
-        return orch.phase_debug(
-            idea_id,
-            analysis_path=analysis_path,
-            debug_report_path=debug_report_path,
-        )
 
     # ── 转换评估 ─────────────────────────────────────────────
 

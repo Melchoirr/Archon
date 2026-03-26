@@ -47,25 +47,12 @@ MINIMAX_API_KEY=your_key
 ZHIPU_API_KEY=your_key          # 可选，知识库功能
 ```
 
-### Topic 文件格式
+### Topic 文件
 
-在 `topics/` 下创建 md 文件，需包含以下 section：
+在 `topics/` 下创建 md 文件，内容不限格式，可以是一句话的想法，也可以是详细的研究计划。`elaborate` 阶段会自动将其展开为结构化的 context.md。
 
-```markdown
-# 课题标题
-
-## 领域
-时间序列预测
-
-## 关键词
-- keyword1
-- keyword2
-
-## 描述
-研究动机和核心思路。
-
-## 范围
-实验范围和约束条件。
+```
+我想用多种时间序列模型的结果合成更好的结果，运用LLM在这个过程中
 ```
 
 ### 运行

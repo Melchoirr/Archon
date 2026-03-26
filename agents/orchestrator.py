@@ -1173,6 +1173,16 @@ class ResearchOrchestrator:
         venv_dir = idea_dir_path / "src" / ".venv"
         venv_path = str(venv_dir) if venv_dir.exists() else ""
 
+        # 自动检测回退路径（调用方可不传）
+        if not analysis_path:
+            f = idea_dir_path / "analysis.md"
+            if f.exists():
+                analysis_path = str(f)
+        if not debug_report_path:
+            f = idea_dir_path / "src" / "debug_report.md"
+            if f.exists():
+                debug_report_path = str(f)
+
         prompt = agent.build_prompt(
             idea_dir=str(idea_dir_path),
             src_dir=src_dir,
