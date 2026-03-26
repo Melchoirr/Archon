@@ -19,15 +19,15 @@ def log_phase_start(phase: str, topic_dir: str, idea_id: str = "",
         log_dir = os.path.join(topic_dir, "phase_logs", log_name)
     os.makedirs(log_dir, exist_ok=True)
 
-    # 收集当前 tree 状态
+    # 收集当前 registry 状态
     if paths:
-        tree_path = str(paths.tree_yaml)
+        registry_path = str(paths.idea_registry_yaml)
     else:
-        tree_path = os.path.join(topic_dir, "research_tree.yaml")
-    tree_content = ""
-    if os.path.exists(tree_path):
-        with open(tree_path, "r", encoding="utf-8") as f:
-            tree_content = f.read()
+        registry_path = os.path.join(topic_dir, "idea_registry.yaml")
+    registry_content = ""
+    if os.path.exists(registry_path):
+        with open(registry_path, "r", encoding="utf-8") as f:
+            registry_content = f.read()
 
     # 收集 idea 状态
     idea_status = ""
@@ -50,9 +50,9 @@ def log_phase_start(phase: str, topic_dir: str, idea_id: str = "",
 Time: {datetime.now().isoformat()}
 Idea: {idea_id or 'N/A'}
 
-## Research Tree State
+## Idea Registry State
 ```yaml
-{tree_content}
+{registry_content}
 ```
 
 ## Idea Status

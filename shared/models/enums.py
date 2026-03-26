@@ -46,20 +46,3 @@ class RelationType(StrEnum):
     alternative_to = "alternative_to"
     complementary = "complementary"
     combines_with = "combines_with"
-
-
-class PhaseName(StrEnum):
-    """研究流程阶段名"""
-    elaborate = "elaborate"
-    survey = "survey"
-    deep_survey = "deep_survey"
-    ideation = "ideation"
-    refine = "refine"
-    theory_check = "theory_check"
-    code_reference = "code_reference"
-    code = "code"
-    debug = "debug"
-    experiment = "experiment"
-    analyze = "analyze"
-    conclude = "conclude"
-    abandoned = "abandoned"

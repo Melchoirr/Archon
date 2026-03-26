@@ -20,17 +20,14 @@ from .refinement_agent import RefinementAgent
 from .conclusion_agent import ConclusionAgent
 from .theory_check_agent import TheoryCheckAgent
 from .debug_agent import DebugAgent
-from shared.utils.config_helpers import load_topic_config
-from shared.models.config import TopicConfig
+from shared.utils.config_helpers import extract_topic_title
 from shared.paths import PathManager
-from tools.research_tree import ResearchTreeService
+from tools.idea_registry import IdeaRegistryService
 from tools.memory import query_memory, add_experience
 from tools.file_ops import read_file, write_file
-from tools.config_updater import update_config_section
 from tools.context_manager import ContextManager
 from tools.knowledge_base import KnowledgeBaseManager, search_knowledge_base
 from shared.models.tool_params import SearchKBParams
-from shared.models.enums import PhaseState
 from tools.phase_logger import log_phase_start, log_phase_end
 
 logger = logging.getLogger(__name__)
@@ -42,8 +39,8 @@ class ResearchOrchestrator:
 
         Args:
             topic_dir: topic 目录路径（如 topics/T001_mean_reversion）。
-                       如果为 None，尝试从 config 或现有结构推断。
-            config_path: config.yaml 路径。如果为 None，从 topic_dir 推断。
+                       如果为 None，尝试从现有结构推断。
+            config_path: 全局 config.yaml 路径（项目根）。
         """
         self.project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.default_max_iter = 3
@@ -56,20 +53,15 @@ class ResearchOrchestrator:
             found = _tmp_paths.find_latest_topic()
             self.topic_dir = str(found) if found else None
 
-        # 正式构建 PathManager 和 ResearchTreeService
+        # 正式构建 PathManager 和 IdeaRegistryService
         self.paths = PathManager(self.project_root, self.topic_dir)
-        self.tree_service = ResearchTreeService(self.paths)
+        self.registry = IdeaRegistryService(self.paths)
 
-        # 推断 config_path
+        # topic title 从 md 文件链提取
         if self.topic_dir:
-            self.config_path = config_path or str(self.paths.config_yaml)
-            if not os.path.exists(self.config_path):
-                # 回退到项目根目录的 config
-                self.config_path = os.path.join(self.project_root, "config.yaml")
+            self.topic_title = extract_topic_title(self.topic_dir)
         else:
-            self.config_path = config_path or os.path.join(self.project_root, "config.yaml")
-
-        self._reload_config()
+            self.topic_title = ""
 
         # 初始化知识库管理器
         self.kb_mgr = KnowledgeBaseManager()
@@ -90,16 +82,6 @@ class ResearchOrchestrator:
         from tools.knowledge_base import SINGLE_KB_NAME
         self.kb_mgr.get_or_create_kb(SINGLE_KB_NAME, "全局研究知识库")
 
-    def _reload_config(self):
-        """重新加载配置"""
-        if os.path.exists(self.config_path):
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                self.config = yaml.safe_load(f) or {}
-            self.topic_config = load_topic_config(self.config_path)
-        else:
-            self.config = {}
-            self.topic_config = TopicConfig()
-
     def _log_phase_start(self, phase: str, idea_id: str = ""):
         """阶段开始日志"""
         if self.topic_dir:
@@ -117,7 +99,6 @@ class ResearchOrchestrator:
 
     def phase_elaborate(self, ref_topics: list = None) -> str:
         """展开调研背景"""
-        self._reload_config()
         self._log_phase_start("elaborate")
 
         # 确定输出路径
@@ -131,7 +112,7 @@ class ResearchOrchestrator:
         if self.ctx:
             context = self.ctx.build_context("elaborate", ref_topics=ref_topics)
 
-        agent = ElaborateAgent(self.config_path, output_path,
+        agent = ElaborateAgent(self.topic_dir, output_path,
                                allowed_dirs=[str(self.paths.topic_dir)])
 
         # 读取 topic_spec.md 作为输入线索（不是约束）
@@ -141,7 +122,7 @@ class ResearchOrchestrator:
             spec_content = read_file(spec_path)
 
         prompt = agent.build_prompt(
-            topic_title=self.topic_config.topic.title,
+            topic_title=self.topic_title,
             spec_content=spec_content,
             context=context,
             output_path=output_path,
@@ -163,7 +144,6 @@ class ResearchOrchestrator:
             round_num: 调研轮次
             start_step: 从第几步开始（1-5），用于断点恢复
         """
-        self._reload_config()
         self._log_phase_start("survey")
 
         topic_id = self._get_topic_id()
@@ -271,16 +251,6 @@ class ResearchOrchestrator:
         except Exception as e:
             logger.warning(f"索引更新失败: {e}")
 
-        # 更新研究树
-        if self.topic_dir:
-            try:
-                tree = self.tree_service.load()
-                tree.root.survey.status = "completed"
-                tree.root.survey.rounds = round_num
-                self.tree_service.save(tree)
-            except Exception as e:
-                logger.warning(f"更新研究树失败: {e}")
-
         add_experience(phase="survey", type="insight",
                        summary=f"Survey 流水线完成（5步），共处理论文见 {paper_list_path}",
                        topic_id=topic_id)
@@ -345,14 +315,14 @@ class ResearchOrchestrator:
         print("  Step 1/5: 搜索与收集论文")
         print(f"{'='*60}")
 
-        agent = make_search_agent(self.config_path,
+        agent = make_search_agent(self.topic_dir,
                                   allowed_dirs=[survey_dir])
 
         context = ""
         if self.ctx:
             context = self.ctx.build_context("survey")
 
-        topic = self.topic_config.topic.title
+        topic = self.topic_title
         past_exp = query_memory(phase="literature")
 
         prompt = build_search_prompt(
@@ -440,7 +410,7 @@ class ResearchOrchestrator:
             self._upload_single_artifact(fpath)
 
     def _survey_step23_parallel(self, paper_list_path: str, summaries_dir: str,
-                                topic_id: str, max_workers: int = 3):
+                                topic_id: str, max_workers: int = 5):
         """Step 2+3: 并行 下载→解析→总结（每篇论文独立流水线）"""
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import threading
@@ -458,12 +428,14 @@ class ResearchOrchestrator:
             print("  paper_list.yaml 为空，跳过")
             return
 
+        from shared.utils.config_helpers import load_global_config
+        _cfg = load_global_config()
         client = _anthropic.Anthropic(
             api_key=os.environ.get("MINIMAX_API_KEY", ""),
-            base_url=os.environ.get("MINIMAX_BASE_URL", "https://api.minimaxi.com/anthropic"),
+            base_url=_cfg.llm.base_url,
         )
-        model = os.environ.get("MINIMAX_MODEL", "MiniMax-M2.5")
-        topic_title = self.topic_config.topic.title
+        model = _cfg.llm.default_model
+        topic_title = self.topic_title
         os.makedirs(summaries_dir, exist_ok=True)
 
         lock = threading.Lock()
@@ -590,7 +562,7 @@ class ResearchOrchestrator:
         print("  Step 4/5: 代码仓库调研")
         print(f"{'='*60}")
 
-        agent = make_repo_agent(self.config_path,
+        agent = make_repo_agent(self.topic_dir,
                                allowed_dirs=[survey_dir, str(self.paths.repos_dir)])
         repos_summary_path = str(self.paths.repos_summary_md)
         paper_list_path = str(self.paths.paper_list_yaml)
@@ -614,7 +586,7 @@ class ResearchOrchestrator:
         eda_dir = str(self.paths.eda_dir)
         os.makedirs(eda_dir, exist_ok=True)
 
-        agent = make_eda_guide_agent(self.config_path,
+        agent = make_eda_guide_agent(self.topic_dir,
                                      allowed_dirs=[eda_dir, str(self.paths.topic_dir)])
         prompt = build_eda_guide_prompt(
             summaries_dir=summaries_dir,
@@ -643,16 +615,12 @@ class ResearchOrchestrator:
         # 预创建 EDA venv
         eda_dir = str(self.paths.eda_dir)
         from tools.venv_manager import setup_idea_venv
-        env_cfg = self.topic_config.environment
         venv_path = str(self.paths.eda_venv_dir)
-        setup_result = setup_idea_venv(
-            eda_dir, env_cfg.python, env_cfg.pip_mirror, env_cfg.use_uv,
-        )
+        setup_result = setup_idea_venv(eda_dir)
         logger.info("EDA venv setup: %s", setup_result)
 
         from .data_agent import DataAgent
         agent = DataAgent(
-            config_path=self.config_path,
             eda_guide_path=str(self.paths.eda_guide_md),
             data_dir=str(self.paths.data_dir),
             eda_dir=eda_dir,
@@ -674,7 +642,7 @@ class ResearchOrchestrator:
         print("  Step 5: 综合整理")
         print(f"{'='*60}")
 
-        agent = make_synthesis_agent(self.config_path,
+        agent = make_synthesis_agent(self.topic_dir,
                                      allowed_dirs=[survey_dir, str(self.paths.topic_dir)])
         repos_summary_path = str(self.paths.repos_summary_md)
         repos_exists = os.path.exists(repos_summary_path)
@@ -726,12 +694,10 @@ class ResearchOrchestrator:
 
     def phase_ideation(self, ref_topics: list = None) -> str:
         """Idea 生成（增强版：ReAct 循环、去重、关系图）"""
-        self._reload_config()
         self._log_phase_start("ideation")
 
-        agent = IdeationAgent(self.config_path,
-                              allowed_dirs=[str(self.paths.ideas_dir), str(self.paths.topic_dir)],
-                              topic_dir=self.topic_dir or ".")
+        agent = IdeationAgent(self.topic_dir or ".",
+                              allowed_dirs=[str(self.paths.ideas_dir), str(self.paths.topic_dir)])
 
         # 收集上下文
         context = ""
@@ -770,12 +736,11 @@ class ResearchOrchestrator:
         if os.path.exists(failed_path):
             failed = read_file(failed_path)
 
-        tc = self.topic_config
         ideas_dir = str(self.paths.ideas_dir) if self.topic_dir else os.path.join(self.project_root, "ideas")
         os.makedirs(ideas_dir, exist_ok=True)
 
         prompt = agent.build_prompt(
-            topic_title=tc.topic.title,
+            topic_title=self.topic_title,
             survey=survey,
             baselines=baselines,
             datasets_md=datasets_md,
@@ -801,8 +766,8 @@ class ResearchOrchestrator:
                 topic_dir=self.topic_dir,
                 client=agent.client,
                 model=agent.model,
-                topic_title=tc.topic.title,
-                tree_service=self.tree_service,
+                topic_title=self.topic_title,
+                registry=self.registry,
                 paths=self.paths,
             )
             if score_results:
@@ -825,7 +790,6 @@ class ResearchOrchestrator:
     def phase_refine(self, idea_id: str, ref_ideas: list = None,
                      ref_topics: list = None) -> str:
         """Idea 细化：理论推导 + 模块化结构 + 实验计划"""
-        self._reload_config()
         self._log_phase_start("refine", idea_id)
 
         idea_dir_path = self.paths.idea_dir(idea_id)
@@ -833,7 +797,7 @@ class ResearchOrchestrator:
             return f"未找到 idea 目录: {idea_id}"
         idea_dir = str(idea_dir_path)
 
-        agent = RefinementAgent(self.config_path, allowed_dirs=[idea_dir])
+        agent = RefinementAgent(self.topic_dir, allowed_dirs=[idea_dir])
 
         # 构建上下文
         context = ""
@@ -859,12 +823,10 @@ class ResearchOrchestrator:
         if analysis_file.exists():
             analysis_path = str(analysis_file)
 
-        tc = self.topic_config
-
         prompt = agent.build_prompt(
-            topic_title=tc.topic.title,
-            dataset_names=tc.dataset_names,
-            metric_names=tc.metric_names,
+            topic_title=self.topic_title,
+            dataset_names="",
+            metric_names="",
             topic_dir=self.topic_dir,
             idea_dir=idea_dir,
             proposal=proposal,
@@ -882,9 +844,6 @@ class ResearchOrchestrator:
         exp_plan_path = str(self.paths.idea_experiment_plan(idea_id))
         self._upload_single_artifact(exp_plan_path)
 
-        # 更新研究树
-        self._update_idea_phase(idea_id, "refinement", "completed")
-
         self._log_phase_end("refine", idea_id, result[:200])
 
         print(f"\nRefine 完成! 请 review:")
@@ -894,7 +853,6 @@ class ResearchOrchestrator:
 
     def phase_code_reference(self, idea_id: str) -> str:
         """代码参考获取：clone 和摘要参考论文的代码"""
-        self._reload_config()
         self._log_phase_start("code_reference", idea_id)
 
         idea_dir_path = self.paths.idea_dir(idea_id)
@@ -916,7 +874,6 @@ class ResearchOrchestrator:
 
         result = agent.run(prompt)
 
-        self._update_idea_phase(idea_id, "code_reference", "completed")
         self._log_phase_end("code_reference", idea_id, result[:200])
 
         print(f"\nCode Reference 完成!")
@@ -924,7 +881,6 @@ class ResearchOrchestrator:
 
     def phase_code(self, idea_id: str, ref_ideas: list = None) -> str:
         """代码编写"""
-        self._reload_config()
         self._log_phase_start("code", idea_id)
 
         idea_dir_path = self.paths.idea_dir(idea_id)
@@ -932,7 +888,7 @@ class ResearchOrchestrator:
             return f"未找到 idea 目录: {idea_id}"
         idea_dir = str(idea_dir_path)
 
-        agent = ExperimentAgent(self.config_path,
+        agent = ExperimentAgent(self.topic_dir,
                                 allowed_dirs=[idea_dir, str(self.paths.data_dir)])
 
         # 构建上下文
@@ -980,7 +936,6 @@ class ResearchOrchestrator:
             venv_result = self._setup_idea_env(idea_id, src_dir)
             result += f"\n\n[环境配置] {venv_result}"
 
-        self._update_idea_phase(idea_id, "coding", "completed")
         self._log_phase_end("code", idea_id, result[:200])
 
         print(f"\nCode 完成! 请 review {idea_dir}/src/")
@@ -1002,7 +957,7 @@ class ResearchOrchestrator:
 
         self._log_phase_start("experiment", f"{idea_id}_{step_id}_V{version}")
 
-        agent = ExperimentAgent(self.config_path,
+        agent = ExperimentAgent(self.topic_dir,
                                 allowed_dirs=[idea_dir, str(self.paths.data_dir)])
 
         # 读取实验计划
@@ -1043,9 +998,6 @@ class ResearchOrchestrator:
 
         result = agent.run(prompt)
 
-        # 更新迭代状态
-        self.tree_service.update_iteration(idea_id, step_id, version, "completed")
-
         self._log_phase_end("experiment", f"{idea_id}_{step_id}_V{version}", result[:200])
 
         return result
@@ -1053,7 +1005,6 @@ class ResearchOrchestrator:
     def phase_analyze(self, idea_id: str, step_id: str = None,
                       version: int = None) -> str:
         """分析实验结果"""
-        self._reload_config()
         self._log_phase_start("analyze", idea_id)
 
         idea_dir_path = self.paths.idea_dir(idea_id)
@@ -1061,7 +1012,7 @@ class ResearchOrchestrator:
             return f"未找到 idea 目录: {idea_id}"
         idea_dir = str(idea_dir_path)
 
-        agent = AnalysisAgent(self.config_path,
+        agent = AnalysisAgent(self.topic_dir,
                               allowed_dirs=[idea_dir, str(self.paths.memory_dir)])
 
         # 收集所有相关文件
@@ -1103,11 +1054,9 @@ class ResearchOrchestrator:
                         results_info += f"\n### {d}\n"
                         results_info += self._read_step_results(step_path)
 
-        tc = self.topic_config
-
         prompt = agent.build_prompt(
-            topic_title=tc.topic.title,
-            metric_names=tc.metric_names,
+            topic_title=self.topic_title,
+            metric_names="",
             files_content=files_content,
             results_info=results_info,
             step_id=step_id,
@@ -1128,9 +1077,6 @@ class ResearchOrchestrator:
             if analysis_p:
                 self._upload_single_artifact(str(analysis_p))
 
-        if not step_id:
-            self._update_idea_phase(idea_id, "analysis", "completed")
-
         self._log_phase_end("analyze", idea_id, result[:200])
 
         print(f"\nAnalysis 完成! 请 review {idea_dir}/")
@@ -1138,7 +1084,6 @@ class ResearchOrchestrator:
 
     def phase_conclude(self, idea_id: str, ref_ideas: list = None) -> str:
         """结论总结"""
-        self._reload_config()
         self._log_phase_start("conclude", idea_id)
 
         idea_dir_path = self.paths.idea_dir(idea_id)
@@ -1146,7 +1091,7 @@ class ResearchOrchestrator:
             return f"未找到 idea 目录: {idea_id}"
         idea_dir = str(idea_dir_path)
 
-        agent = ConclusionAgent(self.config_path,
+        agent = ConclusionAgent(self.topic_dir,
                                 allowed_dirs=[idea_dir, str(self.paths.memory_dir)])
 
         # 构建上下文
@@ -1167,7 +1112,6 @@ class ResearchOrchestrator:
         if conclusion_path:
             self._upload_single_artifact(str(conclusion_path))
 
-        self._update_idea_phase(idea_id, "conclusion", "completed")
         self._log_phase_end("conclude", idea_id, result[:200])
 
         print(f"\nConclusion 完成! 请 review {idea_dir}/conclusion.md")
@@ -1175,7 +1119,6 @@ class ResearchOrchestrator:
 
     def phase_theory_check(self, idea_id: str, feedback: str = "") -> str:
         """理论检查：对 refinement 产出进行交叉验证"""
-        self._reload_config()
         self._log_phase_start("theory_check", idea_id)
 
         idea_dir_path = self.paths.idea_dir(idea_id)
@@ -1186,7 +1129,7 @@ class ResearchOrchestrator:
         if not refinement_dir:
             return f"未找到 refinement 目录: {idea_id}"
 
-        agent = TheoryCheckAgent(self.config_path,
+        agent = TheoryCheckAgent(self.topic_dir,
                                  allowed_dirs=[str(idea_dir_path)])
 
         theory_path = str(refinement_dir / "theory.md")
@@ -1205,7 +1148,6 @@ class ResearchOrchestrator:
         result = agent.run(prompt)
 
         self._upload_single_artifact(output_path)
-        self._update_idea_phase(idea_id, "theory_check", "completed")
         self._log_phase_end("theory_check", idea_id, result[:200])
 
         print(f"\nTheory Check 完成! 请 review: {output_path}")
@@ -1215,14 +1157,13 @@ class ResearchOrchestrator:
                     analysis_path: str = "",
                     debug_report_path: str = "") -> str:
         """调试：运行测试、修复 bug"""
-        self._reload_config()
         self._log_phase_start("debug", idea_id)
 
         idea_dir_path = self.paths.idea_dir(idea_id)
         if not idea_dir_path:
             return f"未找到 idea 目录: {idea_id}"
 
-        agent = DebugAgent(self.config_path,
+        agent = DebugAgent(self.topic_dir,
                            allowed_dirs=[str(idea_dir_path)])
 
         src_dir = str(idea_dir_path / "src")
@@ -1244,20 +1185,20 @@ class ResearchOrchestrator:
 
         result = agent.run(prompt)
 
-        self._update_idea_phase(idea_id, "debug", "completed")
         self._log_phase_end("debug", idea_id, result[:200])
 
         print(f"\nDebug 完成! 请 review: {src_dir}/debug_report.md")
         return result
 
-    def phase_deep_survey(self, queries: list = None) -> str:
-        """深度文献调研：针对特定方向补充文献"""
-        self._reload_config()
+    def phase_deep_survey(self, queries: list = None, round_num: int = 2) -> str:
+        """深度文献调研：针对特定方向补充文献
+
+        Args:
+            queries: 补充搜索关键词（暂未使用）
+            round_num: 调研轮次，默认 2（表示第二轮深度调研）
+        """
         self._log_phase_start("deep_survey")
-        # 复用 phase_survey 的流水线，增加轮次
-        tree = self.tree_service.load()
-        current_rounds = tree.root.survey.rounds or 1
-        result = self.phase_survey(round_num=current_rounds + 1)
+        result = self.phase_survey(round_num=round_num)
         self._log_phase_end("deep_survey", summary=result[:200])
         return result
 
@@ -1296,26 +1237,7 @@ class ResearchOrchestrator:
         req_path = src_dir / "requirements.txt"
         if not req_path.exists():
             return "未找到 requirements.txt，跳过环境配置"
-        env_cfg = self.topic_config.environment
-        return setup_idea_venv(
-            idea_src_dir=str(src_dir),
-            python_version=env_cfg.python,
-            pip_mirror=env_cfg.pip_mirror,
-            use_uv=env_cfg.use_uv,
-        )
-
-    def _update_idea_phase(self, idea_id: str, phase_name: str, status: str):
-        """更新研究树中 idea 的阶段状态"""
-        try:
-            tree = self.tree_service.load()
-        except Exception:
-            return
-
-        for idea in tree.root.ideas:
-            if idea.id == idea_id or idea.id.endswith(f"-{idea_id}"):
-                setattr(idea.phases, phase_name, PhaseState(status))
-                self.tree_service.save(tree)
-                return
+        return setup_idea_venv(idea_src_dir=str(src_dir))
 
     def _get_topic_id(self) -> str:
         """获取当前 topic ID"""
@@ -1327,40 +1249,10 @@ class ResearchOrchestrator:
         return ""
 
     def status(self, topic_id: str = None) -> str:
-        """打印研究树当前状态"""
+        """打印研究状态（从 idea_registry + fsm_state 读取）"""
         try:
-            tree = self.tree_service.load()
-        except Exception:
-            return "未找到研究树。"
-
-        lines = []
-        root = tree.root
-        lines.append(f"课题: {root.topic or root.topic_brief or ''}")
-        lines.append(f"Topic ID: {root.topic_id or 'N/A'}")
-
-        # elaborate 状态
-        if root.elaborate:
-            lines.append(f"展开调研: {root.elaborate.status or 'N/A'}")
-
-        # survey 状态
-        if root.survey:
-            lines.append(f"文献调研: {root.survey.status or 'N/A'} (轮次: {root.survey.rounds or 'N/A'})")
-
-        # ideas
-        ideas = root.ideas
-        lines.append(f"\nIdeas ({len(ideas)} 个):")
-        for idea in ideas:
-            lines.append(f"  [{idea.id}] {idea.title} ({idea.status or ''})")
-            phases = idea.phases
-            if phases:
-                for p_name in ["refinement", "theory_check", "code_reference", "coding", "debug", "experiment", "analysis", "conclusion"]:
-                    val = getattr(phases, p_name, None)
-                    if val:
-                        lines.append(f"    - {p_name}: {val}")
-            # 实验步骤
-            for step in idea.experiment_steps:
-                lines.append(f"    实验 {step.step_id} ({step.name}): {step.status}")
-                for it in step.iterations:
-                    lines.append(f"      V{it.version}: {it.status}")
-
-        return "\n".join(lines)
+            return self.registry.read_research_status()
+        except FileNotFoundError:
+            return "未找到 idea_registry.yaml。"
+        except Exception as e:
+            return f"读取状态失败: {e}"

@@ -1,6 +1,6 @@
 """Debug Agent：运行测试、修复 bug、验证代码与设计文档一致"""
 from .base_agent import BaseAgent
-from shared.utils.config_helpers import load_topic_config
+from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file, list_directory
 from tools.bash_exec import run_command
 from tools.claude_code import claude_fix_error
@@ -52,11 +52,11 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 代码调试专家。你的任务是运行
 
 
 class DebugAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml", max_debug_cycles: int = 5,
+    def __init__(self, topic_dir: str, max_debug_cycles: int = 5,
                  allowed_dirs: list[str] = None):
-        tc = load_topic_config(config_path)
+        topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc.topic.title,
+            topic_title=topic_title,
             max_debug_cycles=max_debug_cycles,
         )
 

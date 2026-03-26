@@ -1,14 +1,14 @@
 """Idea 细化 Agent：理论推导 + 模块化结构设计 + 阶段性实验设计"""
 from .base_agent import BaseAgent
-from shared.utils.config_helpers import load_topic_config
+from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file
-from tools.research_tree import read_tree, update_idea_phase
+from tools.idea_registry import read_research_status
 from tools.memory import query_memory
 from tools.web_search import web_search
 from tools.openalex import search_papers
 from tools.paper_manager import read_paper_section, check_local_knowledge
 from shared.models.tool_params import (
-    ReadFileParams, WriteFileParams, ReadTreeParams, UpdateIdeaPhaseParams,
+    ReadFileParams, WriteFileParams, ReadResearchStatusParams,
     QueryMemoryParams, WebSearchParams, SearchPapersParams,
     ReadPaperSectionParams, CheckLocalKnowledgeParams,
 )
@@ -61,23 +61,23 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案细化专家。你的任务是
 
 | 工具 | 用途 |
 |------|------|
-| read_tree | 开始前读取研究树，了解 idea 当前阶段状态 |
+| read_research_status | 开始前读取研究状态，了解 idea 当前阶段状态 |
 | read_file | 读取 proposal.md、design.md、survey 文档等输入材料 |
 | write_file | 将 theory.md、model_modular.md、model_complete.md、experiment_plan.md 写入目录 |
 | query_memory | 查询历史经验，参考类似 idea 的细化经验 |
 | search_papers | 搜索论文获取理论依据、典型超参数、baseline 结果 |
 | web_search | 搜索技术实现细节、数学推导参考 |
 | read_paper_section | 按章节阅读已下载论文，获取具体方法细节和实验设置 |
-| update_idea_phase | 完成后更新 refinement 阶段状态 |
+| (FSM 自动管理阶段状态) | |
 
 ## 工作流
 
-1. read_tree() → 确认目标 idea 状态
+1. read_research_status() → 确认目标 idea 状态
 2. read_file() → 读取 proposal.md 和 design.md 获取方案概要
 3. query_memory() → 查询相关历史经验
 4. search_papers() + read_paper_section() → 获取理论依据和实验参考值
 5. write_file() → 依次写入 theory.md → model_modular.md → model_complete.md → experiment_plan.md
-6. update_idea_phase(idea_id=..., phase="refinement", status="completed")
+6. （FSM 自动管理阶段状态转移）
 
 ## 关键约束
 - 明确区分 **创新部分** vs **沿用已知优秀方法的部分**
@@ -96,23 +96,11 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案细化专家。你的任务是
 
 
 class RefinementAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None):
-        tc = load_topic_config(config_path)
-        # 构建可选的数据集和指标信息
-        extra_context = ""
-        if tc.dataset_names:
-            extra_context += f"\n数据集: {tc.dataset_names}"
-        if tc.metric_names:
-            extra_context += f"\n评估指标: {tc.metric_names}"
-
+    def __init__(self, topic_dir: str, allowed_dirs: list[str] = None):
+        topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc.topic.title,
+            topic_title=topic_title,
         )
-        if extra_context:
-            system_prompt = system_prompt.replace(
-                "研究课题: {topic_title}".format(topic_title=tc.topic.title),
-                f"研究课题: {tc.topic.title}{extra_context}",
-            )
 
         super().__init__(
             name="方案细化Agent",
@@ -123,8 +111,7 @@ class RefinementAgent(BaseAgent):
         )
         self.register_tool("read_file", read_file, ReadFileParams)
         self.register_tool("write_file", write_file, WriteFileParams)
-        self.register_tool("read_tree", read_tree, ReadTreeParams)
-        self.register_tool("update_idea_phase", update_idea_phase, UpdateIdeaPhaseParams)
+        self.register_tool("read_research_status", read_research_status, ReadResearchStatusParams)
         self.register_tool("query_memory", query_memory, QueryMemoryParams)
         self.register_tool("web_search", web_search, WebSearchParams)
         self.register_tool("search_papers", search_papers, SearchPapersParams)

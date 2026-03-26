@@ -7,18 +7,19 @@
 import os
 import json
 import logging
+import tempfile
 from datetime import datetime
 
 import yaml
 
 from shared.models.fsm import (
-    FSMState, FSMSnapshot, IdeaFSMState, TransitionRecord,
+    FSMState, FSMSnapshot, IdeaFSMState,
     AnalysisVerdict, TheoryVerdict, DebugVerdict, SurveyVerdict,
-    AnalysisDecision, DebugDecision,
 )
-from shared.models.enums import PhaseState, IdeaStatus
+from shared.models.decisions import AnalysisDecision, DebugDecision
+from shared.models.audit import TransitionRecord
+from shared.models.enums import IdeaStatus
 from shared.paths import PathManager
-from tools.research_tree import ResearchTreeService
 from tools.file_ops import read_file
 
 logger = logging.getLogger(__name__)
@@ -62,32 +63,27 @@ USER_CONFIRM_TRANSITIONS = {
     ("survey", "ideation"),
 }
 
-# FSM 状态到 research_tree IdeaPhases 字段的映射
-STATE_TO_PHASE = {
-    "refine": "refinement",
-    "theory_check": "theory_check",
-    "code_reference": "code_reference",
-    "code": "coding",
-    "debug": "debug",
-    "experiment": "experiment",
-    "analyze": "analysis",
-    "conclude": "conclusion",
-}
-
 
 class ResearchFSM:
     """有限状态机引擎，管理 topic 和 idea 级别的状态流转"""
 
-    def __init__(self, paths: PathManager, tree_service: ResearchTreeService,
-                 config_path: str, auto: bool = False):
+    def __init__(self, paths: PathManager, config_path: str = "",
+                 auto: bool = False):
         self.paths = paths
-        self.tree = tree_service
-        self.config_path = config_path
         self.auto = auto
         self.snapshot = self._load_snapshot()
 
         # 延迟初始化评估器（避免循环导入）
         self._evaluators = None
+        # 延迟初始化 IdeaRegistryService（避免循环导入）
+        self._registry = None
+
+    @property
+    def registry(self):
+        if self._registry is None:
+            from tools.idea_registry import IdeaRegistryService
+            self._registry = IdeaRegistryService(self.paths)
+        return self._registry
 
     @property
     def evaluators(self):
@@ -125,9 +121,7 @@ class ResearchFSM:
 
             # auto 模式：施加重试上限
             if self.auto and state in MAX_RETRIES:
-                survey_rounds = sum(
-                    1 for r in self.snapshot.transition_history
-                    if r.to_state in ("survey", "deep_survey"))
+                survey_rounds = self.snapshot.topic_retry_counts.get("survey", 0)
                 if survey_rounds >= MAX_RETRIES.get("survey", 3):
                     next_state = "ideation"
 
@@ -140,9 +134,14 @@ class ResearchFSM:
                 return f"用户退出，当前状态保留为 {state}"
 
             # 记录转换
+            verdict_summary = self._extract_summary(decision)
             trigger = f"eval:{decision.get('verdict', 'auto')}" if isinstance(decision, dict) and decision.get("verdict") else "auto:linear"
             self._record_transition(state, next_state, trigger,
-                                     decision_snapshot=decision if isinstance(decision, dict) else None)
+                                     verdict_summary=verdict_summary)
+
+            # 更新 topic retry count
+            self.snapshot.topic_retry_counts[state] = \
+                self.snapshot.topic_retry_counts.get(state, 0) + 1
 
             self.snapshot.topic_state = next_state
             self._persist_snapshot()
@@ -170,17 +169,15 @@ class ResearchFSM:
 
         state = idea_fsm.current_state
         results = []
+        feedback = ""  # 运行时内存传递，不持久化
 
         while state not in ("completed", "abandoned", "conclude"):
             print(f"\n[FSM] {idea_id} 状态: {state} "
                   f"(S{idea_fsm.step_id}/V{idea_fsm.version})")
 
             # 执行当前状态
-            result = self._execute_idea_state(state, idea_id, idea_fsm)
+            result = self._execute_idea_state(state, idea_id, idea_fsm, feedback)
             results.append(f"{state}: done")
-
-            # 标记阶段完成
-            self._mark_phase_completed(state, idea_id)
 
             # 评估转换
             next_state, decision = self._evaluate_idea_transition(
@@ -212,20 +209,21 @@ class ResearchFSM:
                 return f"用户退出，{idea_id} 状态保留为 {state}"
 
             # 记录
+            verdict_summary = self._extract_summary(decision)
             trigger = f"eval:{decision.get('verdict', 'auto')}" if isinstance(decision, dict) and "verdict" in decision else "auto:linear"
             self._record_transition(state, next_state, trigger,
                                      idea_id=idea_id,
-                                     decision_snapshot=decision if isinstance(decision, dict) else None)
+                                     verdict_summary=verdict_summary)
 
-            # 更新 retry count — 递增当前状态（评估器用 state 的 count 判断重试上限）
+            # 更新 retry count
             idea_fsm.retry_counts[state] = idea_fsm.retry_counts.get(state, 0) + 1
 
-            # 传递 feedback
+            # 提取 feedback（运行时传递，不持久化）
             if isinstance(decision, dict):
-                idea_fsm.feedback = decision.get("next_action_detail", "") or \
-                                    "; ".join(decision.get("revision_suggestions", []))
+                feedback = decision.get("next_action_detail", "") or \
+                           "; ".join(decision.get("revision_suggestions", []))
             else:
-                idea_fsm.feedback = ""
+                feedback = ""
 
             idea_fsm.current_state = next_state
             self._persist_snapshot()
@@ -233,9 +231,8 @@ class ResearchFSM:
 
         # 处理终态
         if state == "conclude":
-            result = self._execute_idea_state("conclude", idea_id, idea_fsm)
+            result = self._execute_idea_state("conclude", idea_id, idea_fsm, feedback)
             results.append("conclude: done")
-            self._mark_phase_completed("conclude", idea_id)
             idea_fsm.current_state = "completed"
             self._persist_snapshot()
         elif state == "abandoned":
@@ -256,8 +253,7 @@ class ResearchFSM:
                 print(f"[FSM] {idea_id} 已在终态: {state}")
                 return None
 
-            self._execute_idea_state(state, idea_id, idea_fsm)
-            self._mark_phase_completed(state, idea_id)
+            self._execute_idea_state(state, idea_id, idea_fsm, "")
             next_state, decision = self._evaluate_idea_transition(state, idea_id, idea_fsm)
 
             # auto 模式：施加重试上限
@@ -278,19 +274,12 @@ class ResearchFSM:
                 print(f"\n[FSM] 用户退出，{idea_id} 状态保留为 {state}")
                 return None
 
+            verdict_summary = self._extract_summary(decision)
             trigger = f"eval:{decision.get('verdict', 'auto')}" if isinstance(decision, dict) and "verdict" in decision else "auto:linear"
             record = self._record_transition(state, next_state, trigger, idea_id=idea_id,
-                                              decision_snapshot=decision if isinstance(decision, dict) else None)
+                                              verdict_summary=verdict_summary)
 
-            # 更新 retry count — 递增当前状态（与 run_idea 保持一致）
             idea_fsm.retry_counts[state] = idea_fsm.retry_counts.get(state, 0) + 1
-
-            # 传递 feedback（与 run_idea 保持一致）
-            if isinstance(decision, dict):
-                idea_fsm.feedback = decision.get("next_action_detail", "") or \
-                                    "; ".join(decision.get("revision_suggestions", []))
-            else:
-                idea_fsm.feedback = ""
             idea_fsm.current_state = next_state
             if state == "analyze" and next_state == "experiment":
                 idea_fsm.version += 1
@@ -308,13 +297,10 @@ class ResearchFSM:
 
             # auto 模式：施加重试上限
             if self.auto and state in MAX_RETRIES:
-                survey_rounds = sum(
-                    1 for r in self.snapshot.transition_history
-                    if r.to_state in ("survey", "deep_survey"))
+                survey_rounds = self.snapshot.topic_retry_counts.get("survey", 0)
                 if survey_rounds >= MAX_RETRIES.get("survey", 3):
                     next_state = "ideation"
 
-            # 用户确认（仅 interactive 模式）
             if not self.auto:
                 next_state = self._prompt_user_topic(state, next_state, decision)
 
@@ -322,9 +308,12 @@ class ResearchFSM:
                 print(f"\n[FSM] 用户退出，Topic 状态保留为 {state}")
                 return None
 
+            verdict_summary = self._extract_summary(decision)
             trigger = f"eval:{decision.get('verdict', 'auto')}" if isinstance(decision, dict) and decision.get("verdict") else "auto:linear"
             record = self._record_transition(state, next_state, trigger,
-                                              decision_snapshot=decision if isinstance(decision, dict) else None)
+                                              verdict_summary=verdict_summary)
+            self.snapshot.topic_retry_counts[state] = \
+                self.snapshot.topic_retry_counts.get(state, 0) + 1
             self.snapshot.topic_state = next_state
             self._persist_snapshot()
             return record
@@ -339,10 +328,9 @@ class ResearchFSM:
 
         self._record_transition(from_state, target_state,
                                  f"user:force_to_{target_state}",
-                                 idea_id=idea_id, feedback=feedback)
+                                 idea_id=idea_id)
 
         idea_fsm.current_state = target_state
-        idea_fsm.feedback = feedback
         self._persist_snapshot()
 
         print(f"[FSM] {idea_id}: {from_state} → {target_state} (forced)")
@@ -362,8 +350,15 @@ class ResearchFSM:
         return "\n".join(lines)
 
     def history(self, idea_id: str = None) -> list[TransitionRecord]:
-        """查看状态转换历史"""
-        records = self.snapshot.transition_history
+        """从 audit_log.yaml 读取状态转换历史"""
+        audit_path = self.paths.audit_log_yaml
+        if not audit_path.exists():
+            return []
+        try:
+            raw = yaml.safe_load(audit_path.read_text(encoding="utf-8")) or {}
+            records = [TransitionRecord(**r) for r in raw.get("records", [])]
+        except Exception:
+            return []
         if idea_id:
             records = [r for r in records if r.idea_id == idea_id]
         return records
@@ -375,17 +370,12 @@ class ResearchFSM:
         from agents.orchestrator import ResearchOrchestrator
         orch = ResearchOrchestrator(
             topic_dir=str(self.paths.topic_dir),
-            config_path=self.config_path,
         )
 
         if state == "elaborate":
             return orch.phase_elaborate()
         elif state in ("survey", "deep_survey"):
-            # 计算这是第几轮 survey（从 transition_history 中统计）
-            round_num = sum(
-                1 for r in self.snapshot.transition_history
-                if r.from_state in ("survey", "deep_survey")
-            ) + 1
+            round_num = self.snapshot.topic_retry_counts.get("survey", 0) + 1
             return orch.phase_survey(round_num=round_num)
         elif state == "ideation":
             return orch.phase_ideation()
@@ -394,18 +384,17 @@ class ResearchFSM:
             return ""
 
     def _execute_idea_state(self, state: str, idea_id: str,
-                            idea_fsm: IdeaFSMState) -> str:
+                            idea_fsm: IdeaFSMState, feedback: str = "") -> str:
         """调用 orchestrator 方法执行 idea 级状态"""
         from agents.orchestrator import ResearchOrchestrator
         orch = ResearchOrchestrator(
             topic_dir=str(self.paths.topic_dir),
-            config_path=self.config_path,
         )
 
         if state == "refine":
             return orch.phase_refine(idea_id)
         elif state == "theory_check":
-            return self._run_theory_check(idea_id, idea_fsm)
+            return self._run_theory_check(idea_id, idea_fsm, feedback)
         elif state == "code_reference":
             return orch.phase_code_reference(idea_id)
         elif state == "code":
@@ -426,11 +415,12 @@ class ResearchFSM:
             logger.warning(f"未知的 idea 状态: {state}")
             return ""
 
-    def _run_theory_check(self, idea_id: str, idea_fsm: IdeaFSMState) -> str:
+    def _run_theory_check(self, idea_id: str, idea_fsm: IdeaFSMState,
+                          feedback: str = "") -> str:
         """运行 TheoryCheckAgent"""
         from agents.theory_check_agent import TheoryCheckAgent
 
-        agent = TheoryCheckAgent(self.config_path)
+        agent = TheoryCheckAgent(str(self.paths.topic_dir))
 
         refinement_dir = self.paths.idea_refinement_dir(idea_id)
         if not refinement_dir:
@@ -446,31 +436,28 @@ class ResearchFSM:
             survey_path=survey_path,
             proposal_path=proposal_path,
             output_path=output_path,
-            feedback=idea_fsm.feedback,
+            feedback=feedback,
         )
 
         return agent.run(prompt)
 
     def _run_debug(self, idea_id: str, idea_fsm: IdeaFSMState) -> str:
-        """运行 DebugAgent（通过 orchestrator 调用，传文件路径而非 feedback 字符串）"""
+        """运行 DebugAgent"""
         from agents.orchestrator import ResearchOrchestrator
 
         orch = ResearchOrchestrator(
             topic_dir=str(self.paths.topic_dir),
-            config_path=self.config_path,
         )
 
         idea_dir = self.paths.idea_dir(idea_id)
         if not idea_dir:
             return f"未找到 idea 目录: {idea_id}"
 
-        # 检查 analysis.md（analyze→debug 回退时提供上下文）
         analysis_path = ""
         analysis_file = idea_dir / "analysis.md"
         if analysis_file.exists():
             analysis_path = str(analysis_file)
 
-        # 检查 debug_report.md（debug→debug 重试时提供上下文）
         debug_report_path = ""
         debug_report_file = idea_dir / "src" / "debug_report.md"
         if debug_report_file.exists():
@@ -487,7 +474,6 @@ class ResearchFSM:
     def _evaluate_topic_transition(self, state: str) -> tuple[str, dict]:
         """评估 topic 级转换"""
         if state == "survey":
-            # 调用 SurveyEvaluator
             ctx = self._gather_survey_eval_context()
             raw = self.evaluators["survey"].evaluate(ctx)
             decision = self.evaluators["survey"].parse_decision(raw)
@@ -495,14 +481,11 @@ class ResearchFSM:
             if decision.verdict == SurveyVerdict.sufficient:
                 return "ideation", raw
             else:
-                survey_rounds = sum(
-                    1 for r in self.snapshot.transition_history
-                    if r.to_state in ("survey", "deep_survey"))
+                survey_rounds = self.snapshot.topic_retry_counts.get("survey", 0)
                 if survey_rounds >= MAX_RETRIES.get("survey", 3):
-                    return "ideation", raw  # 超限，强制前进
+                    return "ideation", raw
                 return "survey", raw
         else:
-            # 线性推进
             next_state = TOPIC_TRANSITIONS.get(state, "completed")
             return next_state, {}
 
@@ -518,13 +501,12 @@ class ResearchFSM:
         elif state == "debug":
             return self._route_debug(idea_id, idea_fsm, retry_count)
         else:
-            # 线性推进
             next_state = IDEA_LINEAR_TRANSITIONS.get(state, "completed")
             return next_state, {}
 
     def _route_analysis(self, idea_id: str, idea_fsm: IdeaFSMState,
                          retry_count: int) -> tuple[str, dict]:
-        """ANALYZE 后的路由决策（纯质量评估，不含重试策略）"""
+        """ANALYZE 后的路由决策"""
         ctx = self._gather_analysis_eval_context(idea_id, idea_fsm)
         raw = self.evaluators["analyze"].evaluate(ctx)
         decision = self.evaluators["analyze"].parse_decision(raw)
@@ -548,7 +530,7 @@ class ResearchFSM:
 
     def _route_theory_check(self, idea_id: str, idea_fsm: IdeaFSMState,
                              retry_count: int) -> tuple[str, dict]:
-        """THEORY_CHECK 后的路由决策（纯质量评估，不含重试策略）"""
+        """THEORY_CHECK 后的路由决策"""
         ctx = self._gather_theory_eval_context(idea_id)
         raw = self.evaluators["theory_check"].evaluate(ctx)
         decision = self.evaluators["theory_check"].parse_decision(raw)
@@ -557,12 +539,11 @@ class ResearchFSM:
             return "code_reference", raw
         if decision.verdict == TheoryVerdict.flawed:
             return "abandoned", raw
-        # weak / derivative → refine（重试上限由调用方按 auto 模式决定）
         return "refine", raw
 
     def _route_debug(self, idea_id: str, idea_fsm: IdeaFSMState,
                       retry_count: int) -> tuple[str, dict]:
-        """DEBUG 后的路由决策（纯质量评估，不含重试策略）"""
+        """DEBUG 后的路由决策"""
         decision = self._parse_debug_report(idea_id)
         raw = decision.model_dump()
 
@@ -579,7 +560,6 @@ class ResearchFSM:
     # ── 上下文收集 ───────────────────────────────────────────
 
     def _gather_survey_eval_context(self) -> dict:
-        """收集 SurveyEvaluator 需要的上下文"""
         survey = self._safe_read(str(self.paths.survey_md))
         paper_list = self._safe_read(str(self.paths.paper_list_yaml))
         context = self._safe_read(str(self.paths.context_md))
@@ -587,7 +567,6 @@ class ResearchFSM:
 
     def _gather_analysis_eval_context(self, idea_id: str,
                                        idea_fsm: IdeaFSMState) -> dict:
-        """收集 AnalysisEvaluator 需要的上下文"""
         idea_dir = self.paths.idea_dir(idea_id)
         analysis_md = ""
         metrics_json = ""
@@ -602,18 +581,15 @@ class ResearchFSM:
             if plan_path.exists():
                 experiment_plan = read_file(str(plan_path))
 
-            # 读取当前版本的 metrics
             v_dir = self.paths.version_dir(idea_id, idea_fsm.step_id, idea_fsm.version)
             if v_dir:
                 metrics_path = v_dir / "metrics.json"
                 if metrics_path.exists():
                     metrics_json = read_file(str(metrics_path))
-                # 也读取版本级 analysis
                 v_analysis = v_dir / "analysis.md"
                 if v_analysis.exists():
                     analysis_md = read_file(str(v_analysis))
 
-        # 构建迭代历史
         iteration_history = self._build_iteration_history(idea_id, idea_fsm)
 
         return {
@@ -626,7 +602,6 @@ class ResearchFSM:
         }
 
     def _gather_theory_eval_context(self, idea_id: str) -> dict:
-        """收集 TheoryEvaluator 需要的上下文"""
         refinement_dir = self.paths.idea_refinement_dir(idea_id)
         theory_review = ""
         if refinement_dir:
@@ -648,7 +623,6 @@ class ResearchFSM:
         }
 
     def _gather_other_ideas_summary(self, current_idea_id: str) -> str:
-        """收集同 batch 其他 idea 的摘要，用于跨 idea 去重"""
         summaries = []
         for idea_id, idea_fsm in self.snapshot.idea_states.items():
             if idea_id == current_idea_id:
@@ -656,13 +630,11 @@ class ResearchFSM:
 
             parts = []
 
-            # 读取 proposal（前 500 字）
             proposal_path = self.paths.idea_proposal(idea_id)
             if proposal_path and proposal_path.exists():
                 proposal_text = read_file(str(proposal_path))
                 parts.append(f"Proposal: {proposal_text[:500]}")
 
-            # 读取 theory_review（前 300 字，如果存在）
             refinement_dir = self.paths.idea_refinement_dir(idea_id)
             if refinement_dir:
                 review_path = refinement_dir / "theory_review.md"
@@ -677,7 +649,6 @@ class ResearchFSM:
 
     def _build_iteration_history(self, idea_id: str,
                                   idea_fsm: IdeaFSMState) -> str:
-        """构建迭代历史摘要"""
         lines = []
         results_dir = self.paths.idea_results_dir(idea_id)
         if not results_dir or not results_dir.exists():
@@ -702,7 +673,6 @@ class ResearchFSM:
         return "\n".join(lines) if lines else "无历史迭代数据"
 
     def _parse_debug_report(self, idea_id: str) -> DebugDecision:
-        """解析 debug_report.md，返回 DebugDecision（规则判断）"""
         idea_dir = self.paths.idea_dir(idea_id)
         if not idea_dir:
             return DebugDecision(verdict=DebugVerdict.fixable)
@@ -715,7 +685,6 @@ class ResearchFSM:
         content = read_file(str(report_path))
         content_lower = content.lower()
 
-        # 简单规则判断
         if "all tests pass" in content_lower or "所有测试通过" in content:
             return DebugDecision(verdict=DebugVerdict.tests_pass, details=content[:500])
 
@@ -730,12 +699,10 @@ class ResearchFSM:
     # ── 用户交互 ─────────────────────────────────────────────
 
     def _needs_user_confirm(self, from_state: str, to_state: str) -> bool:
-        """判断此转换是否需要用户确认"""
         return (from_state, to_state) in USER_CONFIRM_TRANSITIONS
 
     def _prompt_user_topic(self, from_state: str, to_state: str,
                             decision: dict) -> str:
-        """Topic 级用户确认（仿照 idea 级交互）"""
         print(f"\n[FSM] {from_state.upper()} 完成")
 
         if isinstance(decision, dict) and decision:
@@ -760,10 +727,7 @@ class ResearchFSM:
                 for s in suggestions[:3]:
                     print(f"    - {s}")
 
-        # 统计 survey 轮次
-        survey_rounds = sum(
-            1 for r in self.snapshot.transition_history
-            if r.to_state in ("survey", "deep_survey"))
+        survey_rounds = self.snapshot.topic_retry_counts.get("survey", 0)
         if survey_rounds > 0:
             print(f"\n  已完成 survey 轮次: {survey_rounds}/{MAX_RETRIES.get('survey', 3)}")
 
@@ -792,12 +756,10 @@ class ResearchFSM:
     def _prompt_user_idea(self, from_state: str, to_state: str,
                            decision: dict, idea_id: str,
                            idea_fsm: IdeaFSMState) -> str:
-        """Idea 级用户确认"""
         print(f"\n[FSM] {from_state.upper()} 完成 — {idea_id} "
               f"S{idea_fsm.step_id}/V{idea_fsm.version}")
 
         if isinstance(decision, dict):
-            # 显示指标摘要
             verdict = decision.get("verdict", "")
             confidence = decision.get("confidence", "")
             print(f"\n  判定: {verdict}" +
@@ -857,119 +819,155 @@ class ResearchFSM:
     # ── 持久化 ───────────────────────────────────────────────
 
     def _persist_snapshot(self):
-        """保存 FSM 状态到 {topic_dir}/fsm_state.yaml"""
+        """原子写入 FSM 快照到 {topic_dir}/fsm_state.yaml"""
         snapshot_path = self.paths.topic_dir / "fsm_state.yaml"
-        # mode="json" 确保 StrEnum 等类型序列化为纯字符串，避免 Python 对象标签
         data = self.snapshot.model_dump(mode="json")
-        with open(snapshot_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+        content = yaml.dump(data, allow_unicode=True, default_flow_style=False)
+        # 原子写入：先写临时文件，再 rename
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(self.paths.topic_dir), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.replace(tmp_path, str(snapshot_path))
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
 
     def _load_snapshot(self) -> FSMSnapshot:
-        """加载 FSM 状态，支持崩溃恢复"""
+        """加载 FSM 快照，支持崩溃恢复"""
         snapshot_path = self.paths.topic_dir / "fsm_state.yaml"
         if snapshot_path.exists():
             try:
                 with open(snapshot_path, "r", encoding="utf-8") as f:
                     data = yaml.safe_load(f) or {}
+                # 兼容旧版：忽略已移除的字段
+                data.pop("transition_history", None)
+                for idea_state in data.get("idea_states", {}).values():
+                    if isinstance(idea_state, dict):
+                        idea_state.pop("feedback", None)
                 return FSMSnapshot(**data)
             except Exception as e:
-                logger.warning(f"FSM 快照加载失败: {e}，尝试从 research_tree 恢复")
-                snapshot = self._recover_from_tree()
-                # 用干净数据覆写损坏的文件
+                logger.warning(f"FSM 快照加载失败: {e}，尝试从文件系统恢复")
+                snapshot = self._recover_from_filesystem()
                 self.snapshot = snapshot
                 self._persist_snapshot()
                 return snapshot
         return FSMSnapshot()
 
-    def _recover_from_tree(self) -> FSMSnapshot:
-        """从 research_tree 重建 FSM 状态"""
+    def _recover_from_filesystem(self) -> FSMSnapshot:
+        """从文件系统推断 FSM 状态（不依赖 research_tree）"""
         snapshot = FSMSnapshot()
-        try:
-            tree = self.tree.load()
-        except Exception:
-            return snapshot
 
         # 推断 topic 状态
-        if tree.root.survey.status == "completed":
+        ideas_dir = self.paths.ideas_dir
+        if ideas_dir.exists() and any(ideas_dir.iterdir()):
             snapshot.topic_state = "completed"
-        elif tree.root.elaborate.status == "completed":
+        elif self.paths.survey_md.exists():
+            snapshot.topic_state = "ideation"
+        elif self.paths.context_md.exists():
             snapshot.topic_state = "survey"
         else:
             snapshot.topic_state = "elaborate"
 
         # 推断 idea 状态
-        for idea in tree.root.ideas:
-            phases = idea.phases
-            # 从后往前找最后一个 completed 的阶段
-            phase_order = [
-                ("conclusion", "completed"),
-                ("analysis", "conclude"),
-                ("experiment", "analyze"),
-                ("debug", "experiment"),
-                ("coding", "debug"),
-                ("code_reference", "code"),
-                ("theory_check", "code_reference"),
-                ("refinement", "theory_check"),
-            ]
-            current = "refine"
-            for phase_name, next_state in phase_order:
-                if getattr(phases, phase_name, None) == PhaseState.completed:
-                    current = next_state
-                    break
+        if not ideas_dir.exists():
+            return snapshot
 
-            snapshot.idea_states[idea.id] = IdeaFSMState(current_state=current)
+        for idea_id in self.paths.list_idea_ids():
+            idea_dir = self.paths.idea_dir(idea_id)
+            if not idea_dir:
+                continue
+
+            # 从产出文件推断阶段（从后往前检查）
+            if (idea_dir / "conclusion.md").exists():
+                current = "completed"
+            elif (idea_dir / "analysis.md").exists():
+                current = "conclude"
+            elif self.paths.idea_results_dir(idea_id) and \
+                 self.paths.idea_results_dir(idea_id).exists():
+                current = "analyze"
+            elif (idea_dir / "src").exists():
+                current = "debug"
+            elif (idea_dir / "code_reference.md").exists():
+                current = "code"
+            elif self.paths.idea_refinement_dir(idea_id) and \
+                 (self.paths.idea_refinement_dir(idea_id) / "theory_review.md").exists():
+                current = "code_reference"
+            elif (idea_dir / "proposal.md").exists():
+                current = "theory_check"
+            else:
+                current = "refine"
+
+            snapshot.idea_states[idea_id] = IdeaFSMState(current_state=current)
 
         return snapshot
 
     def _record_transition(self, from_state: str, to_state: str,
                             trigger: str, idea_id: str = "",
-                            feedback: str = "",
-                            decision_snapshot: dict = None) -> TransitionRecord:
-        """记录状态转换"""
+                            verdict_summary: str = "") -> TransitionRecord:
+        """记录状态转换到 audit_log.yaml（唯一写入点）"""
         record = TransitionRecord(
             timestamp=datetime.now().isoformat(),
             from_state=from_state,
             to_state=to_state,
             trigger=trigger,
             idea_id=idea_id,
-            feedback=feedback,
-            decision_snapshot=decision_snapshot,
+            verdict_summary=verdict_summary,
         )
-        self.snapshot.transition_history.append(record)
+
+        # Append 到 audit_log.yaml
+        audit_path = self.paths.audit_log_yaml
+        try:
+            if audit_path.exists():
+                raw = yaml.safe_load(audit_path.read_text(encoding="utf-8")) or {}
+            else:
+                raw = {}
+            records = raw.get("records", [])
+            records.append(record.model_dump(mode="json"))
+            raw["records"] = records
+            audit_path.write_text(
+                yaml.dump(raw, allow_unicode=True, default_flow_style=False),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.warning(f"写入 audit_log 失败: {e}")
+
         return record
 
-    def _mark_phase_completed(self, state: str, idea_id: str):
-        """更新 research_tree 中的阶段状态"""
-        phase_name = STATE_TO_PHASE.get(state)
-        if not phase_name:
-            return
-
-        try:
-            tree = self.tree.load()
-            for idea in tree.root.ideas:
-                if idea.id == idea_id or idea.id.endswith(f"-{idea_id}"):
-                    setattr(idea.phases, phase_name, PhaseState.completed)
-                    self.tree.save(tree)
-                    return
-        except Exception as e:
-            logger.warning(f"更新 research_tree 失败: {e}")
-
     def _mark_idea_abandoned(self, idea_id: str):
-        """标记 idea 为 abandoned"""
+        """标记 idea 为 abandoned（更新 idea_registry）"""
         try:
-            tree = self.tree.load()
-            for idea in tree.root.ideas:
-                if idea.id == idea_id or idea.id.endswith(f"-{idea_id}"):
-                    idea.status = IdeaStatus.failed
-                    self.tree.save(tree)
-                    return
+            self.registry.update_idea_status(idea_id, "failed")
         except Exception as e:
             logger.warning(f"标记 abandoned 失败: {e}")
+
+    def _extract_summary(self, decision: dict | None) -> str:
+        """从 decision dict 提取一行摘要"""
+        if not isinstance(decision, dict) or not decision:
+            return ""
+        # 尝试用 Decision 模型的 to_summary()
+        verdict = decision.get("verdict", "")
+        parts = [str(verdict)] if verdict else []
+        if "coverage_score" in decision:
+            parts.append(f"coverage={decision['coverage_score']}")
+            gaps = decision.get("gap_areas", [])
+            if gaps:
+                parts.append(f"gaps: {', '.join(str(g) for g in gaps[:3])}")
+        elif "confidence" in decision:
+            parts.append(f"confidence={decision['confidence']}")
+            if "expectations_met_ratio" in decision:
+                parts.append(f"met_ratio={decision['expectations_met_ratio']}")
+        elif "tests_passed" in decision:
+            parts.append(f"{decision['tests_passed']}/{decision.get('tests_total', '?')} passed")
+        elif "novelty_score" in decision:
+            parts.append(f"novelty={decision['novelty_score']}")
+        return ", ".join(parts)
 
     # ── 工具方法 ─────────────────────────────────────────────
 
     def _safe_read(self, path: str) -> str:
-        """安全读取文件，不存在返回空字符串"""
         if os.path.exists(path):
             return read_file(path)
         return ""

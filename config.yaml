@@ -1,0 +1,9 @@
+llm:
+  base_url: https://api.minimaxi.com/anthropic
+  default_model: MiniMax-M2.5
+  fast_model: MiniMax-M2.1-highspeed
+  max_tokens: 16384
+
+search:
+  openalex_api: https://api.openalex.org
+  web_search_engine: duckduckgo

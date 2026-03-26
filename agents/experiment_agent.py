@@ -2,10 +2,10 @@
 import os
 
 from .base_agent import BaseAgent
-from shared.utils.config_helpers import load_topic_config
+from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file, list_directory
 from tools.bash_exec import run_command
-from tools.research_tree import read_tree, update_idea_phase
+from tools.idea_registry import read_research_status
 from tools.memory import query_memory, add_experience
 from tools.claude_code import (
     claude_write_module, claude_fix_error, claude_review,
@@ -14,7 +14,7 @@ from tools.github_repo import list_repos
 from tools.venv_manager import setup_idea_venv
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams, ListDirectoryParams,
-    RunCommandParams, ReadTreeParams, UpdateIdeaPhaseParams,
+    RunCommandParams, ReadResearchStatusParams,
     QueryMemoryParams, AddExperienceParams,
     ClaudeWriteModuleParams, ClaudeFixErrorParams, ClaudeReviewParams,
     ListReposParams, SetupVenvParams,
@@ -108,23 +108,11 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 实验执行专家。你的职责是**拆�
 
 
 class ExperimentAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None):
-        tc = load_topic_config(config_path)
-        # 构建可选的数据集和指标信息
-        extra_context = ""
-        if tc.dataset_names:
-            extra_context += f"\n\n## 可用数据集\n{tc.dataset_names}"
-        if tc.metric_names:
-            extra_context += f"\n\n## 评估指标\n{tc.metric_names}"
-
+    def __init__(self, topic_dir: str, allowed_dirs: list[str] = None):
+        topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc.topic.title,
+            topic_title=topic_title,
         )
-        if extra_context:
-            system_prompt = system_prompt.replace(
-                "## 核心原则",
-                f"{extra_context}\n\n## 核心原则",
-            )
 
         super().__init__(
             name="实验执行Agent",
@@ -137,8 +125,7 @@ class ExperimentAgent(BaseAgent):
         self.register_tool("write_file", write_file, WriteFileParams)
         self.register_tool("list_directory", list_directory, ListDirectoryParams)
         self.register_tool("run_command", run_command, RunCommandParams)
-        self.register_tool("read_tree", read_tree, ReadTreeParams)
-        self.register_tool("update_idea_phase", update_idea_phase, UpdateIdeaPhaseParams)
+        self.register_tool("read_research_status", read_research_status, ReadResearchStatusParams)
         self.register_tool("query_memory", query_memory, QueryMemoryParams)
         self.register_tool("add_experience", add_experience, AddExperienceParams)
         self.register_tool("claude_write_module", claude_write_module, ClaudeWriteModuleParams)

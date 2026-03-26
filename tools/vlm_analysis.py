@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 QWEN_VL_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-QWEN_VL_MODEL = "qwen3.5-vl-plus"
+QWEN_VL_MODEL = "qwen3.5-plus"
 
 
 def _encode_image(image_path: str) -> str:

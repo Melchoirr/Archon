@@ -1,13 +1,13 @@
 """分析决策 Agent：逐步逐版本分析实验结果（增强版：预期对比、VLM、微调建议）"""
 from .base_agent import BaseAgent
-from shared.utils.config_helpers import load_topic_config
+from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file, list_directory
-from tools.research_tree import read_tree, update_idea_phase
+from tools.idea_registry import read_research_status
 from tools.memory import query_memory, add_experience
 from tools.vlm_analysis import analyze_image, analyze_plots_dir
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams, ListDirectoryParams,
-    ReadTreeParams, UpdateIdeaPhaseParams,
+    ReadResearchStatusParams,
     QueryMemoryParams, AddExperienceParams,
     AnalyzeImageParams, AnalyzePlotsParams,
 )
@@ -68,7 +68,7 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研分析专家。你的任务是分析
 
 | 工具 | 用途 |
 |------|------|
-| read_tree | 开始前读取研究树，了解实验步骤和迭代状态 |
+| read_research_status | 开始前读取研究状态，了解实验步骤和迭代状态 |
 | read_file | 读取 experiment_plan.md（预期结果）、实验日志、metrics 文件等 |
 | write_file | 将分析报告写入 analysis.md 或版本级分析文件 |
 | list_directory | 查看 results/ 目录结构，发现所有步骤和版本目录 |
@@ -76,18 +76,18 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研分析专家。你的任务是分析
 | add_experience | 将关键发现（insight/success/failure）记录到 memory 系统 |
 | analyze_image | 分析单张实验结果图片（loss 曲线、指标对比图等） |
 | analyze_plots_dir | 批量分析某个版本的所有可视化结果 |
-| update_idea_phase | 完成后更新 analysis 阶段状态 |
+| (FSM 自动管理阶段状态) | |
 
 ## 工作流
 
-1. read_tree() → 了解实验进度和迭代状态
+1. read_research_status() → 了解实验进度和迭代状态
 2. read_file() → 读取 experiment_plan.md 获取预期结果
 3. list_directory() → 遍历 results/ 发现所有步骤/版本
 4. read_file() → 逐版本读取 metrics 和日志
 5. analyze_image() / analyze_plots_dir() → 分析可视化结果
 6. write_file() → 写入版本级分析 → 步骤级综合 → 总体分析
 7. add_experience() → 记录关键经验到 memory
-8. update_idea_phase(idea_id=..., phase="analysis", status="completed")
+8. （FSM 自动管理阶段状态转移）
 
 ## 意外发现
 
@@ -107,11 +107,11 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研分析专家。你的任务是分析
 
 
 class AnalysisAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None):
-        tc = load_topic_config(config_path)
+    def __init__(self, topic_dir: str, allowed_dirs: list[str] = None):
+        topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc.topic.title,
-            metric_names=tc.metric_names,
+            topic_title=topic_title,
+            metric_names="",
         )
 
         super().__init__(
@@ -124,8 +124,7 @@ class AnalysisAgent(BaseAgent):
         self.register_tool("read_file", read_file, ReadFileParams)
         self.register_tool("write_file", write_file, WriteFileParams)
         self.register_tool("list_directory", list_directory, ListDirectoryParams)
-        self.register_tool("read_tree", read_tree, ReadTreeParams)
-        self.register_tool("update_idea_phase", update_idea_phase, UpdateIdeaPhaseParams)
+        self.register_tool("read_research_status", read_research_status, ReadResearchStatusParams)
         self.register_tool("query_memory", query_memory, QueryMemoryParams)
         self.register_tool("add_experience", add_experience, AddExperienceParams)
         self.register_tool("analyze_image", analyze_image, AnalyzeImageParams)

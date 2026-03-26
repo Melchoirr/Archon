@@ -4,17 +4,18 @@
 - **实现状态**：✅已完成
 
 ## 核心文件
-- `agents/orchestrator.py:39-84` — `ResearchOrchestrator.__init__()`，初始化 PathManager / TreeService / KB / ContextManager
-- `agents/orchestrator.py:118-157` — `phase_elaborate()`，展开研究背景
-- `agents/orchestrator.py:159-304` — `phase_survey()`，5 步文献调研管道
-- `agents/orchestrator.py` — `phase_ideation()`, `phase_refine()`, `phase_code_reference()`, `phase_code()`, `phase_theory_check()`, `phase_debug()`, `phase_experiment()`, `phase_analyze()`, `phase_conclude()`
-- `agents/fsm_engine.py:27-74` — FSM 常量（MAX_RETRIES、TOPIC_TRANSITIONS、IDEA_LINEAR_TRANSITIONS、USER_CONFIRM_TRANSITIONS）
-- `agents/fsm_engine.py:78-90` — `ResearchFSM.__init__(auto)`，懒加载评估器，auto 模式参数
-- `agents/fsm_engine.py:106-149` — `run_topic()`，Topic 级 FSM 循环
-- `agents/fsm_engine.py:151-238` — `run_idea()`，Idea 级 FSM 循环（含 auto 重试上限）
-- `agents/fsm_engine.py:240-298` — `step()`，单步状态转换（含 auto 重试上限）
-- `agents/fsm_engine.py:481-560` — 评估路由（`_route_analysis`, `_route_theory_check`, `_route_debug`）— 纯质量评估，不含重试策略
-- `agents/fsm_engine.py` — `_gather_other_ideas_summary()`，跨 idea 摘要收集
+- `agents/orchestrator.py` — `ResearchOrchestrator`，初始化 PathManager / IdeaRegistryService / KB / ContextManager；`phase_*()` 方法编排各阶段
+- `agents/fsm_engine.py` — `ResearchFSM`，FSM 引擎（不再依赖 ResearchTreeService）
+  - 常量：MAX_RETRIES、TOPIC_TRANSITIONS、IDEA_LINEAR_TRANSITIONS、USER_CONFIRM_TRANSITIONS
+  - 核心方法：`run_topic()`, `run_idea()`, `step()`, `force_transition()`, `status()`, `history()`
+  - 持久化：`_persist_snapshot()`（原子写入）、`_load_snapshot()`、`_recover_from_filesystem()`
+  - 审计：`_record_transition()` → 写 `audit_log.yaml`（唯一写入点）
+  - 评估路由：`_route_analysis`, `_route_theory_check`, `_route_debug` — 纯质量评估
+- `shared/models/fsm.py` — `FSMState`, `IdeaFSMState`, `FSMSnapshot`（精简版，仅恢复数据）
+- `shared/models/audit.py` — `TransitionRecord`（精简版，verdict_summary 替代 decision_snapshot）
+- `shared/models/decisions.py` — `AnalysisDecision`, `TheoryDecision`, `SurveyDecision`, `DebugDecision`（含 `to_summary()` 方法）
+- `shared/models/idea_registry.py` — `TopicMeta`, `IdeaEntry`, `IdeaRegistry`, `Score`, `Relationship`
+- `tools/idea_registry.py` — `IdeaRegistryService`，Idea 元数据 CRUD + `read_research_status()` 合并视图
 
 ## 功能描述
 系统的中枢控制层，包含两个核心组件：
@@ -33,10 +34,16 @@
 - 路由方法纯做质量评估，重试策略由上层按模式决定
 - 状态快照持久化到 `fsm_state.yaml`
 
+**三文件分离架构**（替代旧 research_tree + FSM 双轨制）：
+- `fsm_state.yaml` — 恢复数据：`FSMSnapshot`（topic_state + idea_states，~15 行）
+- `idea_registry.yaml` — Idea 元数据：`IdeaRegistry`（scores/category/relationships）
+- `audit_log.yaml` — 流转记录：`TransitionRecord` 列表（精简摘要，用户可通览）
+
 **关键数据结构**：
-- `FSMSnapshot`（`shared/models/fsm.py:124`）：topic_state + idea_states + transition_history
-- `IdeaFSMState`（`shared/models/fsm.py:115`）：current_state + step_id + version + retry_counts + feedback
-- `TransitionRecord`（`shared/models/fsm.py:104`）：timestamp + from/to state + trigger + decision_snapshot
+- `FSMSnapshot`（`shared/models/fsm.py`）：schema_version + topic_state + topic_retry_counts + idea_states
+- `IdeaFSMState`（`shared/models/fsm.py`）：current_state + step_id + version + retry_counts（无 feedback，运行时内存传递）
+- `TransitionRecord`（`shared/models/audit.py`）：timestamp + from/to state + trigger + verdict_summary（一行摘要）
+- `*Decision`（`shared/models/decisions.py`）：评估器产出，含 `to_summary()` 方法
 
 ## 运行流程
 
@@ -45,15 +52,15 @@
 - FSM 模式：CLI `cmd_fsm()` → `_get_fsm()` → `fsm.run_topic()` 或 `fsm.run_idea()`
 
 ### 处理步骤
-1. **初始化** — 创建 PathManager、TreeService、KnowledgeBaseManager、ContextManager
+1. **初始化** — 创建 PathManager、IdeaRegistryService、KnowledgeBaseManager、ContextManager
 2. **阶段执行**（Orchestrator）— 创建对应 Agent，传入上下文和工具集，调用 Agent.run()
 3. **状态评估**（FSM）— 阶段完成后调用评估器，获取结构化 verdict
-4. **状态转换**（FSM）— 根据 verdict 决定下一状态，记录 TransitionRecord，更新 FSMSnapshot
+4. **状态转换**（FSM）— 根据 verdict 决定下一状态，记录 TransitionRecord 到 audit_log.yaml，更新 FSMSnapshot
 5. **重试管理**（FSM）— retry_counts 跟踪；auto 模式达到 MAX_RETRIES 时自动 abandon；interactive 模式由用户在确认环节决定
 
 ### 输出
 - Orchestrator：各阶段产物（context.md, survey/, ideas/, results/ 等）
-- FSM：状态转换历史、fsm_state.yaml
+- FSM：fsm_state.yaml（恢复快照）、audit_log.yaml（流转记录）
 
 ### 依赖关系
 - **上游**：F01（CLI 创建实例）
@@ -65,7 +72,9 @@
 - interactive 模式下回退转换（theory_check→refine, analyze→refine, debug→refine）需用户确认，无效输入重新提示
 - `force_transition()` 手动跳转到任意状态（附带 feedback）
 - Topic 目录不存在时自动发现最新 topic
-- `_mark_idea_abandoned()` 使用 `IdeaStatus.failed` 枚举值（修复 Pydantic 序列化警告）
+- `_mark_idea_abandoned()` 通过 `IdeaRegistryService.update_idea_status()` 更新
+- FSM 快照原子写入（tempfile + os.replace），防止半写损坏
+- `_recover_from_filesystem()` 从产出文件推断状态（不依赖 research_tree）
 
 ## 测试方法
 ```bash
@@ -78,6 +87,19 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [重构] 2026-03-26 15:49 — FSM 全面接管：消除 research_tree 双轨制 (`pending`)
+- **目的**：消除 FSM + research_tree 双轨并行导致的状态不一致和载入失败问题
+- **改动**：
+  - `agents/fsm_engine.py` — 删除 `tree_service` 依赖、`_mark_phase_completed()`、`_recover_from_tree()`、`STATE_TO_PHASE`；新增 `_recover_from_filesystem()`（从产出文件推断状态）、原子写入、`_record_transition()` 写 audit_log.yaml、`feedback` 改为运行时局部变量、survey 轮次用 `topic_retry_counts` 替代 history 扫描
+  - `agents/orchestrator.py` — `tree_service` → `registry`（IdeaRegistryService）；删除所有 `_update_idea_phase()` 调用和方法本身
+  - 新增 `shared/models/audit.py`（TransitionRecord）、`shared/models/decisions.py`（4 个 Decision + to_summary()）、`shared/models/idea_registry.py`（Score, Relationship, TopicMeta, IdeaEntry, IdeaRegistry）、`tools/idea_registry.py`（IdeaRegistryService + read_research_status）
+  - 精简 `shared/models/fsm.py`（删除 TransitionRecord/Decision/feedback/transition_history，新增 schema_version + topic_retry_counts）
+  - 5 个 Agent：`read_tree` → `read_research_status`，删除 `update_idea_phase` 工具
+  - `run_research.py`：init 创建 idea_registry.yaml 替代 research_tree.yaml；FSM 构造不再传 tree_service
+  - 删除 `shared/models/research_tree.py`、`tools/research_tree.py`、`enums.py` 中 PhaseName
+  - 迁移脚本 `scripts/migrate_tree_to_registry.py`
+- **验证**：全部 import 通过；T001 fsm_state.yaml 从 1222 行压缩到 15 行；audit_log.yaml 54 条精简记录；idea_registry.yaml 含 5 个 idea
+
 ### [修复] 2026-03-26 10:18 — FSM 快照序列化修复 + 损坏快照自动恢复 (`d4e0e0a`)
 - **目的**：修复 StrEnum 等类型写入 YAML 时带 Python 对象标签的问题；加载损坏快照恢复后自动覆写文件
 - **改动**：`agents/fsm_engine.py` `_persist_snapshot()` 改用 `model_dump(mode="json")` 确保纯字符串序列化；`_load_snapshot()` 从 research_tree 恢复后立即覆写 fsm_state.yaml

@@ -1,8 +1,8 @@
 """Idea 生成 Agent：基于文献 gap 发散生成研究 idea（增强版：ReAct 循环、去重、关系图）"""
 from .base_agent import BaseAgent
-from shared.utils.config_helpers import load_topic_config
+from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file, list_directory
-from tools.research_tree import add_idea_to_tree, read_tree
+from tools.idea_registry import add_idea, read_research_status
 from tools.memory import query_memory
 from tools.web_search import web_search
 from tools.openalex import search_papers
@@ -13,7 +13,7 @@ from tools.idea_graph import (
 )
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams, ListDirectoryParams,
-    AddIdeaParams, ReadTreeParams, QueryMemoryParams, CheckLocalKnowledgeParams,
+    AddIdeaParams, ReadResearchStatusParams, QueryMemoryParams, CheckLocalKnowledgeParams,
     WebSearchParams, SearchPapersParams,
     AddRelationshipParams, GetGraphParams,
 )
@@ -36,7 +36,7 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研创意专家。你的任务是基于
 ## 去重约束
 
 生成 idea 前，必须:
-1. 用 read_tree 检查已有 idea 列表
+1. 用 read_research_status 检查已有 idea 列表
 2. 用 list_directory 查看 ideas/ 目录下的现有 idea
 3. 确保新 idea 的核心创新点与已有 idea **不重复**
 4. 如果方向相似但角度不同，在 proposal 中明确说明差异
@@ -68,7 +68,7 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研创意专家。你的任务是基于
 ## 输出
 
 将每个 idea 写入 ideas/{{idea_id}}_{{shortname}}/proposal.md
-用 add_idea_to_tree 注册到研究树
+用 add_idea 注册到 idea 注册表
 用 add_idea_relationship 记录 idea 间的关系
 最后用 get_idea_graph 生成并保存关系图
 
@@ -78,11 +78,10 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研创意专家。你的任务是基于
 
 
 class IdeationAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None,
-                 topic_dir: str = "."):
-        tc = load_topic_config(config_path)
+    def __init__(self, topic_dir: str, allowed_dirs: list[str] = None):
+        topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc.topic.title,
+            topic_title=topic_title,
         )
 
         super().__init__(
@@ -95,8 +94,8 @@ class IdeationAgent(BaseAgent):
         self.register_tool("read_file", read_file, ReadFileParams)
         self.register_tool("write_file", write_file, WriteFileParams)
         self.register_tool("list_directory", list_directory, ListDirectoryParams)
-        self.register_tool("add_idea_to_tree", add_idea_to_tree, AddIdeaParams)
-        self.register_tool("read_tree", read_tree, ReadTreeParams)
+        self.register_tool("add_idea", add_idea, AddIdeaParams)
+        self.register_tool("read_research_status", read_research_status, ReadResearchStatusParams)
         self.register_tool("query_memory", query_memory, QueryMemoryParams)
         self.register_tool("web_search", web_search, WebSearchParams)
         self.register_tool("search_papers", search_papers, SearchPapersParams)
@@ -141,6 +140,6 @@ class IdeationAgent(BaseAgent):
 - 每个 idea 只包含一个核心创新点
 
 每个 idea 创建对应的 {ideas_dir}/{{idea_id}}_{{shortname}}/proposal.md，
-并用 add_idea_to_tree 注册到研究树。
+并用 add_idea 注册到 idea 注册表。
 生成完毕后用 add_idea_relationship 记录 idea 间的关系，
 最后用 get_idea_graph 生成关系图。"""

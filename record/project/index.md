@@ -39,16 +39,16 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 → [完整详情](features/f01-cli-entry.md)
 
 ### F02 — 编排引擎与 FSM 状态机 · ✅已完成 · 🟢在用
-- **核心文件**：`agents/orchestrator.py`, `agents/fsm_engine.py`
+- **核心文件**：`agents/orchestrator.py`, `agents/fsm_engine.py`, `tools/idea_registry.py`, `shared/models/fsm.py`, `shared/models/decisions.py`, `shared/models/audit.py`, `shared/models/idea_registry.py`
 - **上游**：F01 / **下游**：F03-F12
-- **最后变更**：2026-03-26 10:18
+- **最后变更**：2026-03-26 15:49
 
 <details><summary>功能概要</summary>
 
 **做什么**：Orchestrator 编排 12 个研究阶段，FSM 管理 Topic 级和 Idea 级状态转换
-**怎么做**：Orchestrator 创建 Agent + 组装上下文 + 执行 ReAct。FSM 维护状态快照（fsm_state.yaml），评估器驱动非线性转换。支持 interactive（用户确认）/ auto（MAX_RETRIES 控制）两种模式
-**关键接口**：`ResearchOrchestrator.phase_*()`, `ResearchFSM.run_topic()`, `run_idea()`, `step()`, `force_transition()`
-**数据流**：CLI 命令 → Orchestrator 组装上下文 → Agent 执行 → 评估器判定 → FSM 状态转换
+**怎么做**：FSM 是唯一状态源。三文件分离：fsm_state.yaml（恢复数据）+ idea_registry.yaml（Idea 元数据）+ audit_log.yaml（流转记录）。Orchestrator 使用 IdeaRegistryService 管理 Idea 元数据，FSM 引擎不再依赖 ResearchTreeService
+**关键接口**：`ResearchOrchestrator.phase_*()`, `ResearchFSM.run_topic()`, `run_idea()`, `step()`, `IdeaRegistryService.read_research_status()`
+**数据流**：CLI 命令 → Orchestrator 组装上下文 → Agent 执行 → 评估器判定 → FSM 状态转换 → audit_log.yaml 记录
 
 </details>
 
@@ -169,13 +169,13 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F10 — 数据模型与路径管理 · ✅已完成 · 🟢在用
 - **核心文件**：`shared/paths.py`, `shared/path_guard.py`, `shared/models/`, `shared/templates/`
 - **上游**：无 / **下游**：F01-F12 全部
-- **最后变更**：2026-03-25 19:42
+- **最后变更**：2026-03-26 15:49
 
 <details><summary>功能概要</summary>
 
 **做什么**：类型安全基础设施——统一路径解析、写操作安全校验、Pydantic 模型体系、实验代码模板
-**怎么做**：PathManager 统一路径（全局+topic+idea 级）。PathGuard 正则检测写目标。30+ Pydantic 工具参数模型 + ResearchTree/FSM 模型。experiment_infrastructure.md 定义 8 项代码规范
-**关键接口**：`PathManager(project_root, topic_dir)`, `PathGuard.check(path)`, `ToolParamsBase.to_schema()`, `TopicConfig`, `ResearchTree`, `FSMSnapshot`
+**怎么做**：PathManager 统一路径（全局+topic+idea 级）。PathGuard 正则检测写目标。Pydantic 模型体系：FSM 核心（fsm.py）+ 评估器决策（decisions.py）+ 审计记录（audit.py）+ Idea 注册表（idea_registry.py）+ 工具参数模型
+**关键接口**：`PathManager(project_root, topic_dir)`, `PathGuard.check(path)`, `ToolParamsBase.to_schema()`, `TopicConfig`, `IdeaRegistry`, `FSMSnapshot`
 **数据流**：代码路径请求 → PathManager 解析 → 绝对路径；数据加载 → Pydantic 校验 → 类型安全模型
 
 </details>
@@ -199,16 +199,16 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 → [完整详情](features/f11-knowledge-context.md)
 
 ### F12 — 通用工具集 · ✅已完成 · 🟢在用
-- **核心文件**：`tools/file_ops.py`, `tools/web_search.py`, `tools/github_repo.py`, `tools/research_tree.py`
+- **核心文件**：`tools/file_ops.py`, `tools/web_search.py`, `tools/github_repo.py`, `tools/idea_registry.py`
 - **上游**：F03 / **下游**：F05-F09
-- **最后变更**：2026-03-11 17:12
+- **最后变更**：2026-03-26 15:49
 
 <details><summary>功能概要</summary>
 
-**做什么**：被多 Agent 共用的基础工具——文件 I/O、DuckDuckGo 搜索、GitHub 仓库管理、研究树 CRUD、配置更新
-**怎么做**：file_ops 提供 read/write/append/list。web_search 封装 DuckDuckGo。github_repo 浅克隆+Claude 摘要。ResearchTreeService 线程安全 CRUD（Lock 保护）+ Pydantic 校验
-**关键接口**：`read_file()`, `write_file()`, `web_search()`, `clone_repo()`, `summarize_repo()`, `ResearchTreeService`
-**数据流**：Agent 工具调用 → 文件/搜索/Git/研究树操作 → 结果返回 Agent
+**做什么**：被多 Agent 共用的基础工具——文件 I/O、DuckDuckGo 搜索、GitHub 仓库管理、Idea 注册表 CRUD
+**怎么做**：file_ops 提供 read/write/append/list。web_search 封装 DuckDuckGo。github_repo 浅克隆+Claude 摘要。IdeaRegistryService 线程安全 CRUD + read_research_status() 合并视图
+**关键接口**：`read_file()`, `write_file()`, `web_search()`, `clone_repo()`, `summarize_repo()`, `IdeaRegistryService.read_research_status()`
+**数据流**：Agent 工具调用 → 文件/搜索/Git/注册表操作 → 结果返回 Agent
 
 </details>
 

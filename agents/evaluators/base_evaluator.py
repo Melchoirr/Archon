@@ -22,11 +22,13 @@ class BaseEvaluator:
     def __init__(self, name: str, system_prompt: str):
         self.name = name
         self.system_prompt = system_prompt
+        from shared.utils.config_helpers import load_global_config
+        cfg = load_global_config()
         self.client = anthropic.Anthropic(
             api_key=os.environ.get("MINIMAX_API_KEY", ""),
-            base_url=os.environ.get("MINIMAX_BASE_URL", "https://api.minimaxi.com/anthropic"),
+            base_url=cfg.llm.base_url,
         )
-        self.model = os.environ.get("MINIMAX_MODEL", "MiniMax-M2.5")
+        self.model = cfg.llm.default_model
 
     def evaluate(self, context: dict) -> dict:
         """构建 prompt → 单次 LLM 调用 → 解析 YAML → 返回结构化决策"""

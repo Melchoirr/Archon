@@ -67,6 +67,19 @@ class AppendFileParams(ToolParamsBase):
     content: str = Field(description="要追加的内容")
 
 
+class EditFileParams(ToolParamsBase):
+    """在文件中查找指定内容并替换为新内容（精确字符串匹配）。
+
+    使用场景：更新已有文档的特定章节，如修改 survey.md 中的某一节。
+    先用 read_file 获取要替换的原始内容，再调用本工具替换。
+    返回：替换确认消息；old_content 未找到时返回错误和文件中的章节标题列表。
+    示例：edit_file(path="survey/survey.md", old_content="## 旧章节\\n旧内容", new_content="## 新章节\\n新内容")
+    """
+    path: str = Field(description="文件路径")
+    old_content: str = Field(description="要被替换的原始内容（必须精确匹配文件中的连续文本片段）")
+    new_content: str = Field(description="替换后的新内容")
+
+
 class ListDirectoryParams(ToolParamsBase):
     """列出指定目录下的文件和子目录。
 
@@ -131,65 +144,21 @@ class RunCommandParams(ToolParamsBase):
     venv_path: str = Field(default="", description="venv 目录路径。设置后命令在该 venv 中执行。")
 
 
-# ── research_tree ─────────────────────────────────────────────
+# ── idea_registry ─────────────────────────────────────────────
 
-class ReadTreeParams(ToolParamsBase):
-    """读取完整的研究树状态。
+class ReadResearchStatusParams(ToolParamsBase):
+    """读取研究状态总览（合并 idea_registry + FSM 状态）。
 
-    使用场景：了解当前研究进度，查看所有 idea 的状态、各阶段完成情况。开始工作前先调用此工具获取全局视图。
-    返回：JSON 格式的完整研究树，包含 survey 状态、所有 idea 及其 phases 状态。
-    示例：read_tree()
+    使用场景：了解当前研究进度，查看所有 idea 的状态、当前阶段、实验步骤等。开始工作前先调用此工具获取全局视图。
+    返回：JSON 格式的统一视图，包含 topic 状态和所有 idea 的元数据与 FSM 状态。
+    示例：read_research_status()
     """
-
-
-class UpdateIdeaPhaseParams(ToolParamsBase):
-    """更新指定 idea 的某个阶段状态。
-
-    使用场景：在开始或完成某个阶段时更新状态，确保研究树反映真实进度。
-    返回：更新确认消息。
-    示例：update_idea_phase(idea_id="T001-I001", phase="refinement", status="completed")
-    """
-    idea_id: str = Field(description="Idea ID（如 T001-I001）")
-    phase: str = Field(description="阶段名: refinement/code_reference/coding/experiment/analysis/conclusion")
-    status: str = Field(description="状态: pending/in_progress/running/completed/failed/skipped")
-
-
-class UpdateIdeaStatusParams(ToolParamsBase):
-    """更新指定 idea 的整体状态。
-
-    使用场景：在 idea 被推荐、激活、完成或失败时更新整体状态。
-    返回：更新确认消息。
-    示例：update_idea_status(idea_id="T001-I001", status="active")
-    """
-    idea_id: str = Field(description="Idea ID（如 T001-I001）")
-    status: str = Field(description="状态: proposed/recommended/deprioritized/active/completed/failed")
-
-
-class UpdateSurveyStatusParams(ToolParamsBase):
-    """更新 survey 阶段状态。
-
-    使用场景：在 survey 开始、完成或失败时更新状态，可记录完成的搜索轮次数。
-    返回：更新确认消息。
-    示例：update_survey_status(status="completed", rounds=3)
-    """
-    status: str = Field(description="状态: pending/in_progress/completed/failed")
-    rounds: int = Field(default=0, description="完成的轮次数")
-
-
-class UpdateElaborateStatusParams(ToolParamsBase):
-    """更新 elaborate 阶段状态。
-
-    使用场景：在 elaborate（深入展开）阶段开始或完成时更新状态。
-    返回：更新确认消息。
-    示例：update_elaborate_status(status="completed")
-    """
-    status: str = Field(description="状态: pending/in_progress/completed/failed")
 
 
 class AddIdeaParams(ToolParamsBase):
-    """向研究树中添加一个新的研究 idea。
+    """添加一个新的研究 idea 到注册表。
 
-    使用场景：在 ideation 阶段产生新 idea 后，将其注册到研究树中。自动初始化所有 phases 结构（refinement/coding/experiment 等均为 pending）。
+    使用场景：在 ideation 阶段产生新 idea 后，将其注册。
     返回：添加确认消息，含生成的完整 idea ID。
     示例：add_idea(idea_id="I001", title="基于频域的注意力机制", category="architecture", brief="freq_attention")
     """
@@ -197,32 +166,6 @@ class AddIdeaParams(ToolParamsBase):
     title: str = Field(description="Idea 标题")
     category: str = Field(description="类别: loss/architecture/training/inference")
     brief: str = Field(default="", description="简短标识（用于目录名）")
-
-
-class AddExperimentStepParams(ToolParamsBase):
-    """注册一个实验步骤到指定 idea，含可配置的迭代次数。
-
-    使用场景：在实验开始前注册步骤，自动生成 step_id（S01, S02...）和对应的迭代结构（V1, V2...）。
-    返回：生成的 step_id 和初始化的迭代列表。
-    示例：add_experiment_step(idea_id="T001-I001", step_name="quick_test", max_iter=3)
-    """
-    idea_id: str = Field(description="Idea ID")
-    step_name: str = Field(description="步骤名称（如 quick_test, full_test）")
-    max_iter: int = Field(default=3, description="最大迭代次数")
-
-
-class UpdateIterationParams(ToolParamsBase):
-    """更新实验迭代状态。
-
-    使用场景：在每次实验迭代开始/完成/失败时更新状态。所有迭代完成后自动更新步骤状态。
-    返回：更新确认消息。
-    示例：update_iteration(idea_id="T001-I001", step_id="S01", version=1, status="completed")
-    """
-    idea_id: str = Field(description="Idea ID")
-    step_id: str = Field(description="步骤 ID（如 S01）")
-    version: int = Field(description="版本号（如 1, 2, 3）")
-    status: str = Field(description="状态: pending/running/completed/failed/skipped")
-    config_diff: str = Field(default="", description="相对 V1 的配置差异")
 
 
 # ── memory ────────────────────────────────────────────────────
@@ -319,13 +262,6 @@ class ClaudeReviewParams(ToolParamsBase):
     review_instruction: str = Field(description="审查指令：审查哪个文件、重点关注什么（如 '审查 src/model.py，对照 design.md 检查模型结构是否一致'）")
     working_dir: str = Field(default="", description="工作目录")
 
-
-# ── config_updater ────────────────────────────────────────────
-
-class UpdateConfigSectionParams(ToolParamsBase):
-    """更新 config.yaml 的指定 section（如 datasets, metrics, experiment）。data 参数为 YAML 格式字符串。"""
-    section: str = Field(description="要更新的顶层 key，如 datasets, metrics, experiment")
-    data: str = Field(description="YAML 格式字符串，解析后写入该 section")
 
 
 # ── knowledge_base ────────────────────────────────────────────

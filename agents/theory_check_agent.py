@@ -1,6 +1,6 @@
 """理论检查 Agent：对 refinement 产出的理论进行交叉验证"""
 from .base_agent import BaseAgent
-from shared.utils.config_helpers import load_topic_config
+from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file
 from tools.web_search import web_search
 from tools.openalex import search_papers, search_topics
@@ -59,10 +59,10 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研理论审查专家。你的任务是
 
 
 class TheoryCheckAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None):
-        tc = load_topic_config(config_path)
+    def __init__(self, topic_dir: str, allowed_dirs: list[str] = None):
+        topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc.topic.title,
+            topic_title=topic_title,
         )
 
         super().__init__(

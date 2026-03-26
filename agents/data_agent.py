@@ -6,13 +6,11 @@ from tools.file_ops import (
 from tools.bash_exec import run_command
 from tools.web_search import web_search
 from tools.vlm_analysis import analyze_image, analyze_plots_dir
-from tools.config_updater import update_config_section
 from tools.venv_manager import setup_idea_venv
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams, ListDirectoryParams,
     RunCommandParams, WebSearchParams,
     AnalyzeImageParams, AnalyzePlotsParams,
-    UpdateConfigSectionParams,
     SetupVenvParams,
 )
 
@@ -27,7 +25,6 @@ _SYSTEM_PROMPT = """你是数据工程与 EDA 执行专家。严格按 {eda_guid
 | run_command(command, timeout) | 执行 shell | "stdout:...\\nstderr:...\\nreturncode: 0" |
 | web_search(query) | 搜索网页 | JSON 数组 |
 | analyze_plots_dir(plots_dir, context) | VLM 分析目录下所有图片 | 每张图的文字分析 |
-| update_config_section(section, data) | 更新 config.yaml | 成功消息 |
 | setup_venv(idea_src_dir) | 创建/更新 venv 并安装 requirements.txt | 成功/失败消息 |
 
 ## 关键命令格式
@@ -66,7 +63,6 @@ _SYSTEM_PROMPT = """你是数据工程与 EDA 执行专家。严格按 {eda_guid
 **Phase 4: 生成报告**
 9. 先 read_file(path='{datasets_path}') 读取已有内容，在其基础上**追加**实际数据路径、文件格式、行列数等信息（不要覆盖已有的论文使用情况描述，只补充硬事实）
 10. write_file 写入 {eda_report_path}
-11. update_config_section(section='datasets', data='YAML内容')
 
 ## 错误处理
 - 一个数据集失败不影响其他 → 继续处理下一个
@@ -86,7 +82,7 @@ _SYSTEM_PROMPT = """你是数据工程与 EDA 执行专家。严格按 {eda_guid
 
 
 class DataAgent(BaseAgent):
-    def __init__(self, *, config_path: str, eda_guide_path: str,
+    def __init__(self, *, eda_guide_path: str,
                  data_dir: str, eda_dir: str,
                  eda_plots_dir: str, eda_scripts_dir: str,
                  eda_report_path: str, datasets_path: str,
@@ -94,7 +90,6 @@ class DataAgent(BaseAgent):
                  allowed_dirs: list[str] = None):
         system_prompt = _SYSTEM_PROMPT.format(
             eda_guide_path=eda_guide_path,
-            config_path=config_path,
             data_dir=data_dir,
             eda_dir=eda_dir,
             eda_scripts_dir=eda_scripts_dir,
@@ -110,7 +105,6 @@ class DataAgent(BaseAgent):
             max_iterations=35,
             allowed_dirs=allowed_dirs,
         )
-        self.config_path = config_path
         self.eda_guide_path = eda_guide_path
         self.data_dir = data_dir
         self.eda_dir = eda_dir
@@ -127,7 +121,6 @@ class DataAgent(BaseAgent):
         self.register_tool("web_search", web_search, WebSearchParams)
         self.register_tool("analyze_image", analyze_image, AnalyzeImageParams)
         self.register_tool("analyze_plots_dir", analyze_plots_dir, AnalyzePlotsParams)
-        self.register_tool("update_config_section", update_config_section, UpdateConfigSectionParams)
         self.register_tool("setup_venv", setup_idea_venv, SetupVenvParams)
 
     def build_prompt(self) -> str:
@@ -140,7 +133,7 @@ class DataAgent(BaseAgent):
             f"- 图表目录: {self.eda_plots_dir}\n"
             f"- EDA 报告: {self.eda_report_path}\n"
             f"- 数据集描述: {self.datasets_path}\n"
-            f"- 配置文件: {self.config_path}\n\n"
+            f"\n"
             f"## 执行步骤\n"
             f"1. 调用 read_file(path='{self.eda_guide_path}') 读取规划\n"
             f"2. 按规划下载每个数据集到 {self.data_dir}/\n"
@@ -148,7 +141,7 @@ class DataAgent(BaseAgent):
             f"4. 执行脚本，图表保存到 {self.eda_plots_dir}/\n"
             f"5. 调用 analyze_plots_dir 分析图表\n"
             f"6. 写入 EDA 报告到 {self.eda_report_path}\n"
-            f"7. 更新 {self.datasets_path} 和 config.yaml"
+            f"7. 更新 {self.datasets_path}"
         )
         if self.venv_path:
             prompt += (

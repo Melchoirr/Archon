@@ -1,14 +1,14 @@
 """方案展开 Agent：将 idea 展开为详细的技术方案"""
 from .base_agent import BaseAgent
-from shared.utils.config_helpers import load_topic_config
+from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file
-from tools.research_tree import read_tree, update_idea_phase
+from tools.idea_registry import read_research_status
 from tools.memory import query_memory
 from tools.web_search import web_search
 from tools.openalex import search_papers
 from tools.paper_manager import check_local_knowledge
 from shared.models.tool_params import (
-    ReadFileParams, WriteFileParams, ReadTreeParams, UpdateIdeaPhaseParams,
+    ReadFileParams, WriteFileParams, ReadResearchStatusParams,
     QueryMemoryParams, WebSearchParams, SearchPapersParams,
     CheckLocalKnowledgeParams,
 )
@@ -35,34 +35,34 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案设计专家。你的任务是
 
 | 工具 | 用途 |
 |------|------|
-| read_tree | 开始前读取研究树，了解当前 idea 状态 |
+| read_research_status | 开始前读取研究状态，了解当前 idea 状态 |
 | read_file | 读取 proposal.md、survey 文档、已有论文笔记等输入材料 |
 | write_file | 将 design.md 写入 idea 目录 |
 | query_memory | 查询历史经验，复用成功方案、避免已知陷阱 |
 | search_papers | 搜索相关论文，获取 baseline 方法和典型超参数 |
 | web_search | 搜索技术博客、实现细节等补充信息 |
-| update_idea_phase | 完成后更新 design 阶段状态 |
+| (FSM 自动管理阶段状态) | |
 
 ## 工作流
 
-1. read_tree() → 确认目标 idea 的当前状态
+1. read_research_status() → 确认目标 idea 的当前状态
 2. read_file() → 读取 proposal.md 获取 idea 描述
 3. query_memory() → 查询相关历史经验
 4. search_papers() / web_search() → 补充技术细节和 baseline 信息
 5. write_file() → 将完整方案写入 design.md
-6. update_idea_phase(idea_id=..., phase="design", status="completed")
+6. （FSM 自动管理阶段状态转移）
 
 将方案写入对应 idea 目录下的 design.md。
 更新研究树中该 idea 的 design 状态。"""
 
 
 class DesignAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml"):
-        tc = load_topic_config(config_path)
+    def __init__(self, topic_dir: str):
+        topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc.topic.title,
-            dataset_names=tc.dataset_names,
-            metric_names=tc.metric_names,
+            topic_title=topic_title,
+            dataset_names="",
+            metric_names="",
         )
 
         super().__init__(
@@ -73,8 +73,7 @@ class DesignAgent(BaseAgent):
         )
         self.register_tool("read_file", read_file, ReadFileParams)
         self.register_tool("write_file", write_file, WriteFileParams)
-        self.register_tool("read_tree", read_tree, ReadTreeParams)
-        self.register_tool("update_idea_phase", update_idea_phase, UpdateIdeaPhaseParams)
+        self.register_tool("read_research_status", read_research_status, ReadResearchStatusParams)
         self.register_tool("query_memory", query_memory, QueryMemoryParams)
         self.register_tool("web_search", web_search, WebSearchParams)
         self.register_tool("search_papers", search_papers, SearchPapersParams)

@@ -1,6 +1,6 @@
 """结论总结 Agent：客观总结 idea 的全链路结果"""
 from .base_agent import BaseAgent
-from shared.utils.config_helpers import load_topic_config
+from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file, list_directory
 from tools.memory import query_memory, add_experience
 from shared.models.tool_params import (
@@ -92,10 +92,10 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研结论总结专家。你的任务是
 
 
 class ConclusionAgent(BaseAgent):
-    def __init__(self, config_path="config.yaml", allowed_dirs: list[str] = None):
-        tc = load_topic_config(config_path)
+    def __init__(self, topic_dir: str, allowed_dirs: list[str] = None):
+        topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            topic_title=tc.topic.title,
+            topic_title=topic_title,
         )
 
         super().__init__(

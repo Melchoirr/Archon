@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 _FILE_PATH_PARAMS: dict[str, list[str]] = {
     "write_file": ["path"],
     "append_file": ["path"],
+    "edit_file": ["path"],
     "clone_repo": ["target_dir"],
     "claude_write_module": ["working_dir"],
     "claude_fix_error": ["working_dir"],

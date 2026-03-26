@@ -200,32 +200,24 @@ def _get_fsm(topic_id: str = None, auto: bool = False):
     """获取 FSM 实例"""
     from agents.fsm_engine import ResearchFSM
     from shared.paths import PathManager
-    from tools.research_tree import ResearchTreeService
 
     topic_dir = _find_topic_dir(topic_id) if topic_id else _find_topic_dir()
     if not topic_dir:
         print("ERROR: 未找到 topic 目录，请先用 --topic xxx.md 初始化")
         sys.exit(1)
 
-    config_path = os.path.join(topic_dir, "config.yaml")
-    if not os.path.exists(config_path):
-        print(f"ERROR: 找不到配置文件: {config_path}")
-        print(f"  请确认 topic 目录完整，或重新用 --topic xxx.md 初始化")
-        sys.exit(1)
-
     project_root = os.path.dirname(os.path.abspath(__file__))
     paths = PathManager(project_root, topic_dir)
-    tree_service = ResearchTreeService(paths)
-    return ResearchFSM(paths, tree_service, config_path, auto=auto)
+    return ResearchFSM(paths, auto=auto)
 
 
 # ── 初始化 ────────────────────────────────────────────────────
 
 def do_init(md_ref: str) -> str:
     """从 topic md 文件初始化项目，返回 topic_id。"""
-    from tools.research_tree import ResearchTreeService
+    from tools.idea_registry import IdeaRegistryService
     from shared.paths import PathManager
-    from shared.models.research_tree import ResearchTree, ResearchRoot
+    from shared.models.idea_registry import IdeaRegistry, TopicMeta
 
     print("Initializing project...")
 
@@ -273,8 +265,8 @@ def do_init(md_ref: str) -> str:
     # 分配 topic 编号
     project_root = os.path.dirname(os.path.abspath(__file__))
     _pm = PathManager(project_root)
-    _ts = ResearchTreeService(_pm)
-    topic_id = _ts.next_topic_id()
+    _rs = IdeaRegistryService(_pm)
+    topic_id = _rs.next_topic_id()
     brief = _make_topic_brief(topic_info["title"], md_path)
     topic_dir = os.path.join("topics", f"{topic_id}_{brief}")
     os.makedirs(topic_dir, exist_ok=True)
@@ -289,44 +281,16 @@ def do_init(md_ref: str) -> str:
     shutil.copy2(md_path, os.path.join(topic_dir, "topic_spec.md"))
     print(f"  Copied {md_path} -> {topic_dir}/topic_spec.md")
 
-    # 创建 config.yaml
-    config = {
-        "topic": {
-            "title": topic_info["title"],
-            "domain": topic_info["domain"],
-            "keywords": topic_info["keywords"],
-        },
-        "project": {"name": brief},
-        "llm": {
-            "provider": "minimax",
-            "sdk": "anthropic",
-            "base_url": "https://api.minimaxi.com/anthropic",
-            "default_model": "MiniMax-M2.5",
-            "fast_model": "MiniMax-M2.1-highspeed",
-            "max_tokens": 8192,
-        },
-        "environment": {"conda_env": "agent", "python": "3.10"},
-        "datasets": {},
-        "search": {
-            "openalex_api": "https://api.openalex.org",
-            "web_search_engine": "duckduckgo",
-        },
-    }
-
-    config_path = os.path.join(topic_dir, "config.yaml")
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-
-    # 创建 research_tree.yaml
-    tree = ResearchTree(root=ResearchRoot(
+    # 创建 idea_registry.yaml
+    registry = IdeaRegistry(topic=TopicMeta(
         topic_id=topic_id,
         topic_brief=brief,
         topic=topic_info["title"],
         description=topic_info["description"],
     ))
     topic_paths = PathManager(project_root, topic_dir)
-    topic_ts = ResearchTreeService(topic_paths)
-    topic_ts.save(tree)
+    topic_rs = IdeaRegistryService(topic_paths)
+    topic_rs.save(registry)
 
     print(f"\n  Topic ID: {topic_id}")
     print(f"  目录: {topic_dir}/")

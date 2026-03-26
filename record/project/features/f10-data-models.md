@@ -7,12 +7,14 @@
 - `shared/paths.py:9-288` — `PathManager`，统一路径解析（全局路径 + topic 路径 + idea 路径 + 发现方法）
 - `shared/path_guard.py:43-161` — `PathGuard`，写操作安全校验（正则检测重定向/tee/mkdir/wget/cp/mv/touch）
 - `shared/models/config.py:44-75` — `TopicConfig`，配置校验（含 TopicSection, LLMSection, ProjectSection, EnvironmentSection, MetricsSection）
-- `shared/models/research_tree.py:10-101` — 研究树模型（Score, IdeaPhases, Iteration, ExperimentStep, Relationship, Idea, ResearchRoot, ResearchTree）
-- `shared/models/fsm.py:10-135` — FSM 模型（FSMState, AnalysisVerdict, TheoryVerdict(含 derivative), DebugVerdict, SurveyVerdict, *Decision, TransitionRecord, IdeaFSMState, FSMSnapshot）
+- `shared/models/idea_registry.py` — Idea 注册表模型（Score, Relationship, TopicMeta, IdeaEntry, IdeaRegistry）— 替代已删除的 research_tree.py
+- `shared/models/fsm.py` — FSM 核心模型（FSMState, 4 个 Verdict 枚举, IdeaFSMState, FSMSnapshot）— 纯恢复数据
+- `shared/models/decisions.py` — 评估器决策模型（AnalysisDecision, TheoryDecision, SurveyDecision, DebugDecision + to_summary()）
+- `shared/models/audit.py` — 审计记录模型（TransitionRecord，verdict_summary 替代 decision_snapshot）
 - `shared/models/paper.py:8-43` — 论文模型（Author, ExternalIds, Paper, PaperIndexEntry）
 - `shared/models/memory.py:10-19` — `ExperienceEntry`，经验日志条目
 - `shared/models/tool_params.py:12-426` — `ToolParamsBase` + 30+ 工具参数 Pydantic 模型（含丰富 docstring：使用场景/返回格式/示例），含 `CheckLocalKnowledgeParams`
-- `shared/models/enums.py:6-65` — 枚举定义（PhaseState, IdeaStatus, IdeaCategory, ExperienceType, RelationType, PhaseName）
+- `shared/models/enums.py` — 枚举定义（PhaseState, IdeaStatus, IdeaCategory, ExperienceType, RelationType）— PhaseName 已删除（与 FSMState 重复）
 - `shared/utils/config_helpers.py:8-24` — `load_topic_config()`
 - `shared/templates/experiment_infrastructure.md` — 实验代码基础设施规范
 
@@ -21,7 +23,7 @@
 
 **PathManager** — 统一路径解析，单一来源：
 - 全局路径：knowledge/, papers/, repos/, memory/, topics/
-- Topic 路径：config.yaml, tree.yaml, fsm_state.yaml, context.md, survey/, ideas/
+- Topic 路径：config.yaml, fsm_state.yaml, idea_registry.yaml, audit_log.yaml, context.md, survey/, ideas/
 - Idea 路径：proposal, refinement/, src/, results/, conclusion
 - 发现方法：`find_latest_topic()`, `list_idea_ids()`
 
@@ -31,8 +33,8 @@
 
 **Pydantic 模型体系**：
 - TopicConfig：配置校验 + computed properties (dataset_names, metric_names 等)
-- ResearchTree：层级追踪（topic → idea → phase → step → iteration）
-- FSM 模型：状态枚举 + verdict + decision + snapshot
+- IdeaRegistry：Idea 元数据管理（替代 ResearchTree）
+- FSM 模型：状态枚举 + verdict（fsm.py）；decision 模型（decisions.py）；审计记录（audit.py）
 - ToolParamsBase：30+ 工具参数模型，`to_schema()` 自动转 JSON Schema（docstring 含使用场景、返回格式、调用示例，LLM 可通过 description 字段获取完整工具指导）
 - Score：4 维评分 + 加权 composite（Novelty×0.35 + Significance×0.35 + Feasibility×0.20 + Alignment×0.10）
 
@@ -76,6 +78,19 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
+### [重构] 2026-03-26 15:49 — 模型体系重组：消除 research_tree，三文件分离 (`pending`)
+- **目的**：消除 FSM + research_tree 双轨并行，清晰分离恢复数据/Idea 元数据/审计记录
+- **改动**：
+  - 新增 `shared/models/idea_registry.py`（Score, Relationship, TopicMeta, IdeaEntry, IdeaRegistry）
+  - 新增 `shared/models/decisions.py`（4 个 Decision + to_summary()，从 fsm.py 分离）
+  - 新增 `shared/models/audit.py`（TransitionRecord，verdict_summary 替代 decision_snapshot）
+  - 精简 `shared/models/fsm.py`（删除 TransitionRecord/Decision/feedback/transition_history，新增 schema_version + topic_retry_counts）
+  - 删除 `shared/models/research_tree.py`（IdeaPhases, ExperimentStep, Iteration, ResearchTree 等全部删除）
+  - 删除 `shared/models/enums.py` 中 PhaseName（与 FSMState 重复）
+  - `shared/models/tool_params.py` 删除旧 tree params（ReadTreeParams, UpdateIdeaPhaseParams 等），保留 ReadResearchStatusParams + AddIdeaParams
+  - `shared/paths.py` 新增 idea_registry_yaml + audit_log_yaml，删除 tree_yaml
+- **验证**：全部 import 通过
+
 ### [实现] 2026-03-25 19:42 — 新增 CheckLocalKnowledgeParams 参数模型 (`eeb0585`)
 - **目的**：为 check_local_knowledge 工具提供 Pydantic 参数校验
 - **改动**：`shared/models/tool_params.py` 新增 `CheckLocalKnowledgeParams(query, resource_type)`；`tools/__init__.py` 导出新模型

@@ -80,12 +80,16 @@ class PathManager:
         return self.topic_dir / "config.yaml"
 
     @property
-    def tree_yaml(self) -> Path:
-        return self.topic_dir / "research_tree.yaml"
-
-    @property
     def fsm_state_yaml(self) -> Path:
         return self.topic_dir / "fsm_state.yaml"
+
+    @property
+    def idea_registry_yaml(self) -> Path:
+        return self.topic_dir / "idea_registry.yaml"
+
+    @property
+    def audit_log_yaml(self) -> Path:
+        return self.topic_dir / "audit_log.yaml"
 
     @property
     def context_md(self) -> Path:

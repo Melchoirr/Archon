@@ -4,7 +4,7 @@ import re
 import logging
 
 from .base_agent import BaseAgent, llm_call_with_retry
-from shared.utils.config_helpers import load_topic_config
+from shared.utils.config_helpers import extract_topic_title
 from tools.openalex import (
     search_papers, search_topics, get_paper_references, get_paper_citations,
 )
@@ -153,22 +153,8 @@ papers:
     summary_status: pending"""
 
 
-def _build_seed_keywords(topic_config) -> str:
-    """从 config 关键词构建种子关键词提示（仅作补充，不再硬编码查询列表）"""
-    keywords = topic_config.search_keywords
-    if not keywords:
-        return "(无种子关键词，请完全从课题背景中自主提取搜索词)"
-    lines = []
-    for i, kw in enumerate(keywords, 1):
-        lines.append(f"{i}. {kw}")
-    lines.append("")
-    lines.append("以上仅为补充种子词，搜索应以课题背景中的论文名、方法名、研究角度为主。")
-    return "\n".join(lines)
-
-
-def _read_context_md(config_path: str) -> str:
+def _read_context_md(topic_dir: str) -> str:
     """读取 topic 目录下的 context.md 内容"""
-    topic_dir = os.path.dirname(config_path)
     context_path = os.path.join(topic_dir, "context.md")
     if os.path.exists(context_path):
         try:
@@ -197,15 +183,14 @@ def build_search_prompt(*, topic: str, round_num: int, paper_list_path: str,
     return prompt
 
 
-def make_search_agent(config_path: str, allowed_dirs: list[str] = None) -> BaseAgent:
+def make_search_agent(topic_dir: str, allowed_dirs: list[str] = None) -> BaseAgent:
     """Step 1: 搜索论文，输出 paper_list.yaml"""
-    tc = load_topic_config(config_path)
-    context_md_content = _read_context_md(config_path)
-    seed_keywords = _build_seed_keywords(tc)
+    topic_title = extract_topic_title(topic_dir)
+    context_md_content = _read_context_md(topic_dir)
     system_prompt = _SEARCH_SYSTEM.format(
-        topic_title=tc.topic.title,
+        topic_title=topic_title,
         context_md_content=context_md_content,
-        seed_keywords=seed_keywords,
+        seed_keywords="(请从课题背景 context.md 中自主提取搜索词)",
     )
 
     agent = BaseAgent(
@@ -464,10 +449,10 @@ def build_repo_prompt(*, paper_list_path: str, summaries_dir: str,
 6. 将所有结果写入 {repos_summary_path}"""
 
 
-def make_repo_agent(config_path: str, allowed_dirs: list[str] = None) -> BaseAgent:
+def make_repo_agent(topic_dir: str, allowed_dirs: list[str] = None) -> BaseAgent:
     """Step 4: 搜索和分析代码仓库"""
-    tc = load_topic_config(config_path)
-    system_prompt = _REPO_SYSTEM.format(topic_title=tc.topic.title)
+    topic_title = extract_topic_title(topic_dir)
+    system_prompt = _REPO_SYSTEM.format(topic_title=topic_title)
 
     agent = BaseAgent(
         name="代码仓库Agent",
@@ -576,10 +561,10 @@ def build_eda_guide_prompt(*, summaries_dir: str, repos_summary_path: str,
 然后综合生成上述三个文件。"""
 
 
-def make_eda_guide_agent(config_path: str, allowed_dirs: list[str] = None) -> BaseAgent:
+def make_eda_guide_agent(topic_dir: str, allowed_dirs: list[str] = None) -> BaseAgent:
     """Step 4a: 从论文提取数据集+分析方法，生成 EDA 规划"""
-    tc = load_topic_config(config_path)
-    system_prompt = _EDA_GUIDE_SYSTEM.format(topic_title=tc.topic.title)
+    topic_title = extract_topic_title(topic_dir)
+    system_prompt = _EDA_GUIDE_SYSTEM.format(topic_title=topic_title)
 
     agent = BaseAgent(
         name="EDA规划Agent",
@@ -690,15 +675,15 @@ def build_synthesis_prompt(*, summaries_dir: str, repos_summary_path: str,
 请先用 list_directory 和 read_file 阅读所有总结文件、仓库调研报告和 EDA 报告，再生成综合文档。"""
 
 
-def make_synthesis_agent(config_path: str, allowed_dirs: list[str] = None) -> BaseAgent:
+def make_synthesis_agent(topic_dir: str, allowed_dirs: list[str] = None) -> BaseAgent:
     """Step 5: 读 summaries + repos_summary + eda_report 写综述文档"""
-    tc = load_topic_config(config_path)
-    context_md_content = _read_context_md(config_path)
+    topic_title = extract_topic_title(topic_dir)
+    context_md_content = _read_context_md(topic_dir)
     context_section = ""
     if "(context.md 未找到" not in context_md_content:
         context_section = f"## 课题背景（来自 context.md）\n\n{context_md_content}\n\n**综述必须覆盖上述课题背景中定义的每个研究角度。**"
     system_prompt = _SYNTHESIS_SYSTEM.format(
-        topic_title=tc.topic.title,
+        topic_title=topic_title,
         context_section=context_section,
     )
 

@@ -5,7 +5,7 @@ import os
 
 from tools.openalex import search_papers
 from agents.base_agent import llm_call_with_retry
-from shared.models.research_tree import Score
+from shared.models.idea_registry import Score
 from shared.models.enums import IdeaStatus
 
 logger = logging.getLogger(__name__)
@@ -329,15 +329,15 @@ def _write_review_md(idea_dir: str, idea_title: str, scores: dict,
 
 
 def score_all_ideas(topic_dir: str, client, model: str, topic_title: str,
-                    tree_service=None, paths=None) -> list[dict]:
+                    registry=None, paths=None) -> list[dict]:
     """遍历所有 proposed 状态的 idea，逐个评分。
 
     Args:
-        tree_service: ResearchTreeService 实例
+        registry: IdeaRegistryService 实例
         paths: PathManager 实例
     """
-    tree = tree_service.load()
-    ideas = tree.root.ideas
+    registry_data = registry.load()
+    ideas = registry_data.ideas
     if not ideas:
         logger.warning("无 idea，跳过评分")
         return []
@@ -410,18 +410,13 @@ def score_all_ideas(topic_dir: str, client, model: str, topic_title: str,
             max_similarity=item.get("max_similarity", 0.0),
         )
 
-        # 更新 tree 中的 idea
-        for tree_idea in tree.root.ideas:
-            if tree_idea.id == item["idea_id"]:
-                tree_idea.scores = Score(
-                    novelty=item["scores"].get("novelty", 3),
-                    significance=item["scores"].get("significance", 3),
-                    feasibility=item["scores"].get("feasibility", 3),
-                    alignment=item["scores"].get("alignment", 3),
-                    rank=rank,
-                )
-                tree_idea.status = IdeaStatus(item["status"])
-                break
-
-    tree_service.save(tree)
+        # 更新 registry 中的 idea
+        registry.update_idea_scores(item["idea_id"], {
+            "novelty": item["scores"].get("novelty", 3),
+            "significance": item["scores"].get("significance", 3),
+            "feasibility": item["scores"].get("feasibility", 3),
+            "alignment": item["scores"].get("alignment", 3),
+            "rank": rank,
+        })
+        registry.update_idea_status(item["idea_id"], item["status"])
     return scored

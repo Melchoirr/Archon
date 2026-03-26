@@ -45,11 +45,14 @@ class BaseAgent:
         from shared.path_guard import PathGuard
         self._path_guard = PathGuard(allowed_dirs) if allowed_dirs else None
 
+        from shared.utils.config_helpers import load_global_config
+        cfg = load_global_config()
         self.client = anthropic.Anthropic(
             api_key=os.environ.get("MINIMAX_API_KEY", ""),
-            base_url=os.environ.get("MINIMAX_BASE_URL", "https://api.minimaxi.com/anthropic"),
+            base_url=cfg.llm.base_url,
         )
-        self.model = os.environ.get("MINIMAX_MODEL", "MiniMax-M2.5")
+        self.model = cfg.llm.default_model
+        self._max_tokens = cfg.llm.max_tokens
         self.messages = []
 
         # 自动注册全局知识库搜索工具
@@ -131,7 +134,7 @@ class BaseAgent:
                 "model": self.model,
                 "system": self.system_prompt,
                 "messages": self.messages,
-                "max_tokens": 16384,
+                "max_tokens": self._max_tokens,
             }
             if self.tools:
                 kwargs["tools"] = self.tools

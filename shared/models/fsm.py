@@ -1,4 +1,4 @@
-"""FSM 数据模型 — 状态机状态、判定、转换记录、快照"""
+"""FSM 数据模型 — 状态机状态、判定枚举、恢复快照"""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class TheoryVerdict(StrEnum):
     sound = "sound"
     weak = "weak"
     flawed = "flawed"
-    derivative = "derivative"  # 与已有工作过于相似，缺乏差异化
+    derivative = "derivative"
 
 
 class DebugVerdict(StrEnum):
@@ -60,79 +60,17 @@ class SurveyVerdict(StrEnum):
     need_more = "need_more"
 
 
-class AnalysisDecision(BaseModel):
-    """ANALYZE 产出的结构化决策"""
-    verdict: AnalysisVerdict
-    confidence: float = Field(ge=0.0, le=1.0)
-    metrics_vs_baseline: dict[str, dict] = Field(default_factory=dict)
-    metrics_vs_expectation: dict[str, dict] = Field(default_factory=dict)
-    expectations_met_ratio: float = Field(ge=0.0, le=1.0, default=0.0)
-    failure_category: str | None = None
-    root_cause: str = ""
-    iteration_trend: str = "unknown"
-    remaining_potential: float = 0.5
-    next_action_detail: str = ""
-    suggested_changes: list[str] = Field(default_factory=list)
-
-
-class TheoryDecision(BaseModel):
-    """THEORY_CHECK 产出的结构化决策"""
-    verdict: TheoryVerdict
-    issues: list[str] = Field(default_factory=list)
-    supporting_papers: list[str] = Field(default_factory=list)
-    contradicting_papers: list[str] = Field(default_factory=list)
-    revision_suggestions: list[str] = Field(default_factory=list)
-    # 创新性评估
-    novelty_assessment: str = ""
-    novelty_score: float = Field(ge=0.0, le=1.0, default=0.5)
-    differentiation: list[str] = Field(default_factory=list)
-    # 因果推演
-    mechanism_reasoning: str = ""
-    mechanism_confidence: float = Field(ge=0.0, le=1.0, default=0.5)
-    # 跨 idea 去重
-    similar_ideas_in_batch: list[str] = Field(default_factory=list)
-
-
-class SurveyDecision(BaseModel):
-    """SURVEY 产出的结构化决策"""
-    verdict: SurveyVerdict
-    coverage_score: float = Field(ge=0.0, le=1.0, default=0.0)
-    covered_areas: list[str] = Field(default_factory=list)
-    gap_areas: list[str] = Field(default_factory=list)
-    recommended_queries: list[str] = Field(default_factory=list)
-
-
-class DebugDecision(BaseModel):
-    """DEBUG 产出的结构化决策（规则判断，非 LLM）"""
-    verdict: DebugVerdict
-    tests_total: int = 0
-    tests_passed: int = 0
-    error_types: list[str] = Field(default_factory=list)
-    details: str = ""
-
-
-class TransitionRecord(BaseModel):
-    """状态转换记录"""
-    timestamp: str
-    from_state: str
-    to_state: str
-    trigger: str  # "auto:linear", "eval:tune", "user:override_to_refine"
-    idea_id: str = ""
-    feedback: str = ""
-    decision_snapshot: dict | None = None
-
-
 class IdeaFSMState(BaseModel):
-    """单个 idea 的 FSM 运行时状态"""
+    """单个 idea 的 FSM 运行时状态（纯恢复数据）"""
     current_state: str = "refine"
     step_id: str = "S01"
     version: int = 1
     retry_counts: dict[str, int] = Field(default_factory=dict)
-    feedback: str = ""
 
 
 class FSMSnapshot(BaseModel):
-    """持久化 FSM 快照 → {topic_dir}/fsm_state.yaml"""
+    """持久化 FSM 快照 → {topic_dir}/fsm_state.yaml（纯恢复数据）"""
+    schema_version: int = 2
     topic_state: str = "elaborate"
+    topic_retry_counts: dict[str, int] = Field(default_factory=dict)
     idea_states: dict[str, IdeaFSMState] = Field(default_factory=dict)
-    transition_history: list[TransitionRecord] = Field(default_factory=list)
