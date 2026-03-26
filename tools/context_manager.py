@@ -1,6 +1,7 @@
 """上下文组装器：每阶段自动注入必需上下文 + 支持跨引用"""
 import os
 import logging
+from pathlib import Path
 
 from shared.paths import PathManager
 
@@ -104,16 +105,15 @@ class ContextManager:
                 return str(d)
         return ""
 
-    def _collect_idea_from_topic(self, sections: list, topic_path: str, idea_id: str, label: str):
+    def _collect_idea_from_topic(self, sections: list, topic_path: str | Path, idea_id: str, label: str):
         """从指定 topic 读取 idea 文档（conclusion 或 analysis）"""
-        ideas_path = os.path.join(topic_path, "ideas")
-        if not os.path.exists(ideas_path):
+        ideas_path = Path(topic_path) / "ideas"
+        if not ideas_path.exists():
             return
-        for idea_d in os.listdir(ideas_path):
-            if idea_d.startswith(idea_id):
-                idea_path = os.path.join(ideas_path, idea_d)
+        for idea_d in sorted(ideas_path.iterdir()):
+            if idea_d.is_dir() and idea_d.name.startswith(idea_id):
                 for fname in ["conclusion.md", "analysis.md"]:
-                    content = self._read_file_safe(os.path.join(idea_path, fname))
+                    content = self._read_file_safe(idea_d / fname)
                     if content:
                         sections.append(f"## 参考 Idea {label} - {fname}\n{content}")
                         break
@@ -133,11 +133,11 @@ class ContextManager:
             elif ref.startswith("T"):
                 topic_path = self._find_topic_path(ref)
                 if topic_path:
-                    ideas_path = os.path.join(topic_path, "ideas")
-                    if os.path.exists(ideas_path):
-                        for idea_d in sorted(os.listdir(ideas_path)):
-                            if idea_d.startswith("I") and os.path.isdir(os.path.join(ideas_path, idea_d)):
-                                idea_id = idea_d.split("_")[0]
+                    ideas_path = Path(topic_path) / "ideas"
+                    if ideas_path.exists():
+                        for idea_d in sorted(ideas_path.iterdir()):
+                            if idea_d.is_dir() and idea_d.name.startswith("I"):
+                                idea_id = idea_d.name.split("_")[0]
                                 self._collect_idea_from_topic(sections, topic_path, idea_id, f"{ref}-{idea_id}")
             else:
                 self._collect_idea_from_topic(sections, str(self.paths.topic_dir), ref, ref)

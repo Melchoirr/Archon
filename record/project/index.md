@@ -185,7 +185,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F11 — 知识管理与上下文 · ✅已完成 · 🟢在用
 - **核心文件**：`tools/knowledge_base.py`, `tools/memory.py`, `tools/context_manager.py`, `tools/embedding.py`
 - **上游**：F10 / **下游**：F03-F09
-- **最后变更**：2026-03-11 17:12
+- **最后变更**：2026-03-26 16:47
 
 <details><summary>功能概要</summary>
 

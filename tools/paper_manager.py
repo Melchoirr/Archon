@@ -20,16 +20,30 @@ def _default_base_dir() -> str:
     return os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge", "papers")
 
 
-def _get_paths(base_dir: str = "") -> dict:
-    """Return resolved directory/file paths, creating dirs as needed."""
-    base = base_dir or _default_base_dir()
-    paths = {
-        "base_dir": base,
-        "pdf_dir": os.path.join(base, "pdf"),
-        "md_dir": os.path.join(base, "parsed"),
-        "index_path": os.path.join(base, "index.yaml"),
-        "summaries_dir": os.path.join(base, "summaries"),
-    }
+def _get_paths(base_dir: str = "", *, path_manager=None) -> dict:
+    """Return resolved directory/file paths, creating dirs as needed.
+
+    Args:
+        base_dir: 论文存储根目录（旧接口，向后兼容）
+        path_manager: PathManager 实例（优先使用）
+    """
+    if path_manager is not None:
+        paths = {
+            "base_dir": str(path_manager.papers_dir),
+            "pdf_dir": str(path_manager.pdf_dir),
+            "md_dir": str(path_manager.parsed_dir),
+            "index_path": str(path_manager.paper_index),
+            "summaries_dir": str(path_manager.summaries_dir),
+        }
+    else:
+        base = base_dir or _default_base_dir()
+        paths = {
+            "base_dir": base,
+            "pdf_dir": os.path.join(base, "pdf"),
+            "md_dir": os.path.join(base, "parsed"),
+            "index_path": os.path.join(base, "index.yaml"),
+            "summaries_dir": os.path.join(base, "summaries"),
+        }
     os.makedirs(paths["pdf_dir"], exist_ok=True)
     os.makedirs(paths["md_dir"], exist_ok=True)
     os.makedirs(paths["summaries_dir"], exist_ok=True)
@@ -303,7 +317,8 @@ def _parse_pdf(pdf_path: str, paper_id: str, md_dir: str = "") -> tuple[str | No
     return None, ""
 
 
-def check_local_knowledge(query: str, resource_type: str = "all", base_dir: str = "") -> str:
+def check_local_knowledge(query: str, resource_type: str = "all", base_dir: str = "",
+                          repos_dir: str = "") -> str:
     """检查本地知识库中是否已存在匹配的资源（论文、代码库、总结）。
 
     在下载前调用此工具，避免重复下载已有内容。支持按 paper_id、标题关键词、
@@ -352,7 +367,8 @@ def check_local_knowledge(query: str, resource_type: str = "all", base_dir: str 
 
     # --- 代码库检查 ---
     if resource_type in ("all", "repo"):
-        repos_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge", "repos")
+        if not repos_dir:
+            repos_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge", "repos")
         if os.path.isdir(repos_dir):
             # 从 URL 提取 repo 名称
             repo_name = query.rstrip("/").split("/")[-1].replace(".git", "").lower()

@@ -6,9 +6,11 @@
 ## 核心文件
 - `tools/knowledge_base.py:16-186` — `KnowledgeBaseManager`，智谱知识库 API（创建/上传/检索/混合召回）
 - `tools/knowledge_base.py:188-223` — `search_knowledge_base()`，全局 KB 搜索（scope 过滤）
-- `tools/memory.py:8-17` — `_load_experiences()` / `_save_experiences()`，YAML 经验日志 I/O
-- `tools/memory.py:24-45` — `query_memory()`，按 tags/phase/idea/topic 过滤经验
-- `tools/memory.py:47-84` — `add_experience()`，记录经验（insight/success/failure/observation，去重）
+- `tools/memory.py:8-16` — `_resolve_log_path()`，统一解析日志文件路径（log_path 优先，否则 memory_dir 拼接）
+- `tools/memory.py:19-25` — `_load_experiences()`，YAML 经验日志读取（支持 log_path 直传）
+- `tools/memory.py:28-32` — `_save_experiences()`，YAML 经验日志写入（支持 log_path 直传）
+- `tools/memory.py:35-60` — `query_memory()`，按 tags/phase/idea/topic 过滤经验（新增 log_path 参数）
+- `tools/memory.py:63-103` — `add_experience()`，记录经验（insight/success/failure/observation，去重，新增 log_path 参数）
 - `tools/context_manager.py:45-199` — `ContextManager`，自动上下文组装
 - `tools/embedding.py:18-60` — `get_embeddings()`，智谱 Embedding-3 批量编码（max 16/request）
 - `tools/embedding.py:62-70` — `cosine_similarity()`
@@ -28,6 +30,7 @@
 - 支持 4 种类型：insight, success, failure, observation
 - 按 tags/phase/idea/topic 过滤查询
 - 去重：同一 phase+topic+type+idea 不重复
+- 支持 `log_path` 直传文件路径，消除硬编码路径拼接
 
 **上下文组装**（ContextManager）：
 - 按阶段规则自动收集上下文文件（PHASE_CONTEXT_RULES, IDEA_CONTEXT_RULES, GLOBAL_CONTEXT_RULES）
@@ -86,6 +89,11 @@ from tools.knowledge_base import search_knowledge_base
 （暂无）
 
 ## 变化
+### [重构] 2026-03-26 16:47 — memory.py 消除硬编码路径拼接
+- **目的**：让 query_memory/add_experience 支持直接传入日志文件路径，避免调用方必须拆分为 memory_dir
+- **改动**：新增 `_resolve_log_path()` 统一路径解析；`_load_experiences`/`_save_experiences`/`query_memory`/`add_experience` 均新增可选 `log_path` 参数，提供时直接使用，否则保持原有 memory_dir 拼接行为
+- **验证**：`python -c "from tools.memory import query_memory, add_experience"` 通过
+
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 - **目的**：实现知识库、经验日志、上下文管理、embedding
 - **改动**：新增 knowledge_base.py + memory.py + context_manager.py + embedding.py + phase_logger.py

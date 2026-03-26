@@ -9,22 +9,33 @@ def _graph_path(topic_dir: str) -> str:
     return os.path.join(topic_dir, "ideas", "idea_graph.yaml")
 
 
-def _load_graph(topic_dir: str) -> dict:
-    path = _graph_path(topic_dir)
+def _resolve_path(topic_dir: str, graph_path: str | None) -> str:
+    """Return *graph_path* when given, otherwise fall back to default."""
+    return graph_path if graph_path is not None else _graph_path(topic_dir)
+
+
+def _load_graph(topic_dir: str, graph_path: str | None = None) -> dict:
+    path = _resolve_path(topic_dir, graph_path)
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {"relationships": []}
     return {"relationships": []}
 
 
-def _save_graph(topic_dir: str, graph: dict):
-    path = _graph_path(topic_dir)
+def _save_graph(topic_dir: str, graph: dict, graph_path: str | None = None):
+    path = _resolve_path(topic_dir, graph_path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(graph, f, allow_unicode=True, default_flow_style=False)
 
 
-def add_idea_relationship(idea_a: str, idea_b: str, rel_type: str, topic_dir: str = ".") -> str:
+def add_idea_relationship(
+    idea_a: str,
+    idea_b: str,
+    rel_type: str,
+    topic_dir: str = ".",
+    graph_path: str | None = None,
+) -> str:
     """添加两个 idea 之间的关系。
 
     Args:
@@ -32,11 +43,12 @@ def add_idea_relationship(idea_a: str, idea_b: str, rel_type: str, topic_dir: st
         idea_b: 第二个 idea ID (如 T001-I002)
         rel_type: 关系类型 - builds_on, alternative_to, complementary, combines_with
         topic_dir: topic 目录路径
+        graph_path: 直接指定 idea_graph.yaml 的完整路径（优先于 topic_dir 推导）
     """
     if rel_type not in VALID_REL_TYPES:
         return f"Invalid rel_type '{rel_type}'. Valid: {', '.join(VALID_REL_TYPES)}"
 
-    graph = _load_graph(topic_dir)
+    graph = _load_graph(topic_dir, graph_path)
 
     # 检查重复
     for rel in graph["relationships"]:
@@ -48,13 +60,13 @@ def add_idea_relationship(idea_a: str, idea_b: str, rel_type: str, topic_dir: st
         "idea_b": idea_b,
         "type": rel_type,
     })
-    _save_graph(topic_dir, graph)
+    _save_graph(topic_dir, graph, graph_path)
     return f"Added relationship: {idea_a} --{rel_type}--> {idea_b}"
 
 
-def get_idea_graph(topic_dir: str = ".") -> str:
+def get_idea_graph(topic_dir: str = ".", graph_path: str | None = None) -> str:
     """返回完整关系图的 markdown 渲染"""
-    graph = _load_graph(topic_dir)
+    graph = _load_graph(topic_dir, graph_path)
     rels = graph.get("relationships", [])
     if not rels:
         return "No idea relationships defined yet."
@@ -76,9 +88,9 @@ def get_idea_graph(topic_dir: str = ".") -> str:
     return "\n".join(lines)
 
 
-def suggest_combinations(topic_dir: str = ".") -> str:
+def suggest_combinations(topic_dir: str = ".", graph_path: str | None = None) -> str:
     """建议可组合的 idea 对"""
-    graph = _load_graph(topic_dir)
+    graph = _load_graph(topic_dir, graph_path)
     rels = graph.get("relationships", [])
     suggestions = []
     for rel in rels:

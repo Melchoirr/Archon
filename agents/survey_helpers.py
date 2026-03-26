@@ -153,9 +153,10 @@ papers:
     summary_status: pending"""
 
 
-def _read_context_md(topic_dir: str) -> str:
+def _read_context_md(topic_dir: str, context_path: str = "") -> str:
     """读取 topic 目录下的 context.md 内容"""
-    context_path = os.path.join(topic_dir, "context.md")
+    if not context_path:
+        context_path = os.path.join(topic_dir, "context.md")
     if os.path.exists(context_path):
         try:
             with open(context_path, "r", encoding="utf-8") as f:

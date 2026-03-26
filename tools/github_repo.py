@@ -8,22 +8,24 @@ logger = logging.getLogger(__name__)
 REPOS_DIR = "knowledge/repos"
 
 
-def _ensure_repos_dir():
-    os.makedirs(REPOS_DIR, exist_ok=True)
+def _ensure_repos_dir(repos_dir: str = REPOS_DIR):
+    os.makedirs(repos_dir, exist_ok=True)
 
 
-def clone_repo(repo_url: str, target_dir: str = "") -> str:
+def clone_repo(repo_url: str, target_dir: str = "", repos_dir: str | None = None) -> str:
     """Git clone 仓库到 knowledge/repos/ 目录。
 
     Args:
         repo_url: GitHub 仓库 URL
         target_dir: 目标目录名（默认从 URL 推断）
+        repos_dir: 仓库存储根目录（默认 REPOS_DIR）
     """
-    _ensure_repos_dir()
+    repos_dir = repos_dir or REPOS_DIR
+    _ensure_repos_dir(repos_dir)
     if not target_dir:
         target_dir = repo_url.rstrip("/").split("/")[-1].replace(".git", "")
 
-    full_path = os.path.join(REPOS_DIR, target_dir)
+    full_path = os.path.join(repos_dir, target_dir)
     if os.path.exists(full_path):
         return f"Repository already exists at {full_path}"
 
@@ -41,11 +43,12 @@ def clone_repo(repo_url: str, target_dir: str = "") -> str:
         return f"Clone error: {e}"
 
 
-def summarize_repo(repo_path: str) -> str:
+def summarize_repo(repo_path: str, repos_dir: str | None = None) -> str:
     """用 claude -p 生成仓库代码摘要。
 
     Args:
         repo_path: 仓库路径（如 knowledge/repos/repo_name）
+        repos_dir: 未使用，保留以统一接口签名
     """
     if not os.path.exists(repo_path):
         return f"Repository not found: {repo_path}"
@@ -103,12 +106,17 @@ def summarize_repo(repo_path: str) -> str:
         return "Summary generation timed out"
 
 
-def list_repos() -> str:
-    """列出已 clone 的仓库"""
-    _ensure_repos_dir()
+def list_repos(repos_dir: str | None = None) -> str:
+    """列出已 clone 的仓库
+
+    Args:
+        repos_dir: 仓库存储根目录（默认 REPOS_DIR）
+    """
+    repos_dir = repos_dir or REPOS_DIR
+    _ensure_repos_dir(repos_dir)
     repos = []
-    for d in os.listdir(REPOS_DIR):
-        full = os.path.join(REPOS_DIR, d)
+    for d in os.listdir(repos_dir):
+        full = os.path.join(repos_dir, d)
         if os.path.isdir(full) and not d.startswith("."):
             has_summary = os.path.exists(os.path.join(full, "SUMMARY.md"))
             repos.append(f"  {d}/ {'(has SUMMARY)' if has_summary else ''}")
