@@ -962,7 +962,7 @@ class ResearchOrchestrator:
 
         # 确定结果目录
         results_dir = str(self.paths.idea_results_dir(idea_id))
-        os.makedirs(results_dir, exist_ok=True)
+        self.paths.ensure_dir(results_dir)
 
         # 确定 venv 路径
         venv_dir = self.paths.idea_venv_dir(idea_id)

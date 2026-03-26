@@ -89,7 +89,7 @@ from tools.knowledge_base import search_knowledge_base
 （暂无）
 
 ## 变化
-### [重构] 2026-03-26 16:49 — phase_logger.py 消除硬编码 os.path.join，统一使用 PathManager
+### [重构] 2026-03-26 16:49 — phase_logger.py 消除硬编码 os.path.join，统一使用 PathManager (`8ce2d81`)
 - **目的**：phase_logger 已接收 PathManager 但仍大量使用 os.path.join 手工拼接路径，双分支（paths/else）维护成本高
 - **改动**：新增 `_ensure_paths()` 统一保证 PathManager 实例；`log_phase_start`/`log_phase_end` 的 topic_dir 改为可选参数；`_collect_new_artifacts` 签名改为 `(phase, paths, idea_id)`，删除 else 分支；`_upload_artifacts` 移除未使用的 topic_dir/idea_id 参数；`os.makedirs` 替换为 `paths.ensure_dir()`；路径构造全部走 PathManager 属性
 - **验证**：`python -c 'from tools.phase_logger import log_phase_start, log_phase_end'` 通过
