@@ -76,6 +76,11 @@ python run_research.py survey --topic T001 --step 4
 （暂无）
 
 ## 变化
+### [实现] 2026-03-26 23:21 — DataAgent 支持 dataset card 生成 + 下载/仅记录双模式
+- **目的**：所有数据集都需要 dataset card 供下游 agent 参考；大规模/需申请的数据集不应强制下载
+- **改动**：`data_agent.py` prompt 重写 Phase 0/1 加入策略判断（downloaded vs card_only）、所有数据集必须 register_dataset；新增 `dataset_cards_dir` 参数；`orchestrator.py` 传入 dataset_cards_dir 到 DataAgent + allowed_dirs
+- **验证**：register_dataset 两种模式测试通过，card 文件正确生成
+
 ### [重构] 2026-03-26 17:14 — DataAgent 增加数据集预检/注册 + check_local_knowledge 迁移 (`2db43ea`)
 - **目的**：DataAgent 用 wget 直接下载无预检，数据集无索引无去重；check_local_knowledge 从 paper_manager 迁移到 knowledge_index
 - **改动**：`data_agent.py` 新增 check_local_knowledge/register_dataset 工具注册，system prompt 增加 Phase 0 预检步骤和 Phase 1 注册步骤；`survey_helpers.py` import 改为 `from tools.knowledge_index import check_local_knowledge`

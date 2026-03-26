@@ -208,12 +208,20 @@ class CheckLocalKnowledgeParams(ToolParamsBase):
 
 
 class RegisterDatasetParams(ToolParamsBase):
-    """将已下载的数据集注册到索引，记录名称、URL、本地路径等元数据"""
+    """注册数据集到索引并生成 dataset card。所有数据集（无论是否下载）都必须注册。
+
+    access_mode 决定获取方式：
+    - downloaded: 已下载到本地，local_path 必填
+    - card_only: 仅记录元信息（数据集过大、需 API 访问、需注册等），不下载
+    """
     name: str = Field(description="数据集名称")
-    url: str = Field(default="", description="下载 URL")
-    local_path: str = Field(description="本地文件/目录路径")
+    url: str = Field(default="", description="下载 URL 或官方页面")
+    local_path: str = Field(default="", description="本地文件/目录路径（downloaded 模式必填）")
     format: str = Field(default="", description="文件格式（csv/parquet/zip/hdf5 等）")
     description: str = Field(default="", description="简要描述")
+    access_mode: str = Field(default="downloaded", description="获取方式: downloaded（已下载）/ card_only（仅记录）")
+    size_info: str = Field(default="", description="数据规模描述（如 '1.2GB', '100M 行'）")
+    access_note: str = Field(default="", description="获取说明（card_only 时必填：如何获取数据、需要注册哪个平台等）")
 
 
 class RegisterRepoParams(ToolParamsBase):

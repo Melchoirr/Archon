@@ -131,22 +131,80 @@ def _default_data_dir() -> str:
                         "shared", "data")
 
 
-def register_dataset(name: str, local_path: str, url: str = "",
-                     format: str = "", description: str = "") -> str:
-    """将已下载的数据集注册到索引。"""
+def _default_dataset_cards_dir() -> str:
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                        "research", "knowledge", "dataset_cards")
+
+
+def register_dataset(name: str, local_path: str = "", url: str = "",
+                     format: str = "", description: str = "",
+                     access_mode: str = "downloaded",
+                     size_info: str = "", access_note: str = "") -> str:
+    """注册数据集到索引并生成 dataset card。
+
+    所有数据集（无论是否下载）都必须注册。access_mode 为 downloaded 时
+    local_path 必填；card_only 时 access_note 应说明如何获取数据。
+    """
+    # 更新索引
     index_path = _default_dataset_index_path()
     index = _load_yaml_index(index_path, _dataset_lock)
     key = name.strip().lower()
-    index[key] = {
+    entry = {
         "name": name,
         "url": url,
         "local_path": local_path,
         "format": format,
         "description": description,
-        "downloaded_at": datetime.now().strftime("%Y-%m-%d"),
+        "access_mode": access_mode,
+        "size_info": size_info,
+        "registered_at": datetime.now().strftime("%Y-%m-%d"),
     }
+    if access_note:
+        entry["access_note"] = access_note
+    index[key] = entry
     _save_yaml_index(index, index_path, _dataset_lock)
-    return f"已注册数据集: {name} -> {local_path}"
+
+    # 生成 dataset card
+    card_path = _write_dataset_card(name, entry)
+
+    mode_label = "已下载" if access_mode == "downloaded" else "仅记录"
+    target = local_path or card_path
+    return f"已注册数据集 ({mode_label}): {name} -> {target}"
+
+
+def _write_dataset_card(name: str, entry: dict) -> str:
+    """生成/更新 dataset card markdown 文件。"""
+    cards_dir = _default_dataset_cards_dir()
+    os.makedirs(cards_dir, exist_ok=True)
+    # 文件名: 小写+下划线
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", name.strip().lower())
+    card_path = os.path.join(cards_dir, f"{safe_name}.md")
+
+    access_mode = entry.get("access_mode", "downloaded")
+    lines = [
+        f"# {entry.get('name', name)}",
+        "",
+        f"- **获取方式**: {'已下载到本地' if access_mode == 'downloaded' else '仅记录（未下载）'}",
+    ]
+    if entry.get("url"):
+        lines.append(f"- **来源**: {entry['url']}")
+    if entry.get("format"):
+        lines.append(f"- **格式**: {entry['format']}")
+    if entry.get("size_info"):
+        lines.append(f"- **规模**: {entry['size_info']}")
+    if access_mode == "downloaded" and entry.get("local_path"):
+        lines.append(f"- **本地路径**: `{entry['local_path']}`")
+    if entry.get("access_note"):
+        lines.append(f"- **获取说明**: {entry['access_note']}")
+    if entry.get("description"):
+        lines.append("")
+        lines.append("## 描述")
+        lines.append(entry["description"])
+    lines.append("")
+
+    with open(card_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return card_path
 
 
 # ── 统一预检入口 ──────────────────────────────────────────────

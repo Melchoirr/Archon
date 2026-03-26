@@ -1,5 +1,4 @@
 """上下文组装器：每阶段自动注入必需上下文 + 支持跨引用"""
-import os
 import logging
 from pathlib import Path
 
@@ -49,8 +48,8 @@ class ContextManager:
 
     def _read_file_safe(self, path, max_chars: int = MAX_FILE_SIZE) -> str:
         """安全读取文件，截断过长内容"""
-        p = str(path)
-        if not os.path.exists(p):
+        p = Path(path)
+        if not p.exists():
             return ""
         try:
             with open(p, "r", encoding="utf-8") as f:
@@ -70,6 +69,20 @@ class ContextManager:
             content = self._read_file_safe(full_path)
             if content:
                 sections.append(f"## {rel_path}\n{content}")
+        # 在需要数据集信息的阶段注入 dataset cards
+        if phase in ("ideation", "refine", "code", "experiment"):
+            cards_dir = self.paths.dataset_cards_dir
+            if cards_dir.exists():
+                card_contents = []
+                for card_file in sorted(cards_dir.iterdir()):
+                    if card_file.suffix == ".md":
+                        content = self._read_file_safe(card_file, max_chars=5000)
+                        if content:
+                            card_contents.append(content)
+                if card_contents:
+                    sections.append(
+                        "## Dataset Cards\n" + "\n\n---\n\n".join(card_contents)
+                    )
         return sections
 
     def _collect_idea_files(self, phase: str, idea_id: str) -> list:
@@ -95,15 +108,15 @@ class ContextManager:
                 sections.append(f"## {rel_path}\n{content}")
         return sections
 
-    def _find_topic_path(self, topic_id: str) -> str:
+    def _find_topic_path(self, topic_id: str) -> Path | None:
         """按 topic_id 前缀匹配目录"""
         topics_dir = self.paths.topics_dir
         if not topics_dir.exists():
-            return ""
+            return None
         for d in topics_dir.iterdir():
             if d.is_dir() and d.name.startswith(topic_id):
-                return str(d)
-        return ""
+                return d
+        return None
 
     def _collect_idea_from_topic(self, sections: list, topic_path: str | Path, idea_id: str, label: str):
         """从指定 topic 读取 idea 文档（conclusion 或 analysis）"""

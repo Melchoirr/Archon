@@ -611,6 +611,7 @@ class ResearchOrchestrator:
         logger.info("EDA venv setup: %s", setup_result)
 
         from .data_agent import DataAgent
+        dataset_cards_dir = str(self.paths.dataset_cards_dir)
         agent = DataAgent(
             eda_guide_path=str(self.paths.eda_guide_md),
             data_dir=str(self.paths.data_dir),
@@ -619,8 +620,9 @@ class ResearchOrchestrator:
             eda_scripts_dir=eda_scripts_dir,
             eda_report_path=str(self.paths.eda_report_md),
             datasets_path=datasets_path,
+            dataset_cards_dir=dataset_cards_dir,
             venv_path=venv_path if os.path.exists(os.path.join(venv_path, "bin", "activate")) else "",
-            allowed_dirs=[eda_dir, str(self.paths.data_dir), str(self.paths.topic_dir)],
+            allowed_dirs=[eda_dir, str(self.paths.data_dir), str(self.paths.topic_dir), dataset_cards_dir],
         )
         agent.run(agent.build_prompt())
         self._reload_config()
