@@ -183,9 +183,9 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 → [完整详情](features/f10-data-models.md)
 
 ### F11 — 知识管理与上下文 · ✅已完成 · 🟢在用
-- **核心文件**：`tools/knowledge_base.py`, `tools/memory.py`, `tools/context_manager.py`, `tools/embedding.py`
+- **核心文件**：`tools/knowledge_base.py`, `tools/memory.py`, `tools/context_manager.py`, `tools/embedding.py`, `tools/phase_logger.py`
 - **上游**：F10 / **下游**：F03-F09
-- **最后变更**：2026-03-26 16:47
+- **最后变更**：2026-03-26 16:49
 
 <details><summary>功能概要</summary>
 

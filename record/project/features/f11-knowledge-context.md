@@ -15,7 +15,7 @@
 - `tools/embedding.py:18-60` — `get_embeddings()`，智谱 Embedding-3 批量编码（max 16/request）
 - `tools/embedding.py:62-70` — `cosine_similarity()`
 - `tools/embedding.py:73-104` — `compute_max_similarity()`，最大相似度查找
-- `tools/phase_logger.py:12-273` — 阶段日志（before/after 快照 + 产物上传 KB）
+- `tools/phase_logger.py:12-228` — 阶段日志（before/after 快照 + 产物上传 KB），统一使用 PathManager 路径
 
 ## 功能描述
 知识积累与上下文管理三大机制：
@@ -89,6 +89,11 @@ from tools.knowledge_base import search_knowledge_base
 （暂无）
 
 ## 变化
+### [重构] 2026-03-26 16:49 — phase_logger.py 消除硬编码 os.path.join，统一使用 PathManager
+- **目的**：phase_logger 已接收 PathManager 但仍大量使用 os.path.join 手工拼接路径，双分支（paths/else）维护成本高
+- **改动**：新增 `_ensure_paths()` 统一保证 PathManager 实例；`log_phase_start`/`log_phase_end` 的 topic_dir 改为可选参数；`_collect_new_artifacts` 签名改为 `(phase, paths, idea_id)`，删除 else 分支；`_upload_artifacts` 移除未使用的 topic_dir/idea_id 参数；`os.makedirs` 替换为 `paths.ensure_dir()`；路径构造全部走 PathManager 属性
+- **验证**：`python -c 'from tools.phase_logger import log_phase_start, log_phase_end'` 通过
+
 ### [重构] 2026-03-26 16:47 — memory.py 消除硬编码路径拼接 (`58ea907`)
 - **目的**：让 query_memory/add_experience 支持直接传入日志文件路径，避免调用方必须拆分为 memory_dir
 - **改动**：新增 `_resolve_log_path()` 统一路径解析；`_load_experiences`/`_save_experiences`/`query_memory`/`add_experience` 均新增可选 `log_path` 参数，提供时直接使用，否则保持原有 memory_dir 拼接行为

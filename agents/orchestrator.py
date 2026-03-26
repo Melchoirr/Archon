@@ -102,10 +102,7 @@ class ResearchOrchestrator:
         self._log_phase_start("elaborate")
 
         # 确定输出路径
-        if self.topic_dir:
-            output_path = str(self.paths.context_md)
-        else:
-            output_path = os.path.join(self.project_root, "knowledge", "context.md")
+        output_path = str(self.paths.context_md)
 
         # 构建上下文
         context = ""
@@ -150,20 +147,14 @@ class ResearchOrchestrator:
 
         # 确定输出目录
         summaries_dir = str(self.paths.summaries_dir)
-        os.makedirs(summaries_dir, exist_ok=True)
+        self.paths.ensure_dir(summaries_dir)
 
-        if self.topic_dir:
-            survey_dir = str(self.paths.survey_dir)
-            baselines_path = str(self.paths.baselines_md)
-            datasets_path = str(self.paths.datasets_md)
-            metrics_path = str(self.paths.metrics_md)
-        else:
-            survey_dir = os.path.join(self.project_root, "knowledge", "survey")
-            baselines_path = os.path.join(self.project_root, "knowledge", "baselines.md")
-            datasets_path = os.path.join(self.project_root, "knowledge", "datasets.md")
-            metrics_path = os.path.join(self.project_root, "knowledge", "metrics.md")
+        survey_dir = str(self.paths.survey_dir)
+        baselines_path = str(self.paths.baselines_md)
+        datasets_path = str(self.paths.datasets_md)
+        metrics_path = str(self.paths.metrics_md)
 
-        os.makedirs(survey_dir, exist_ok=True)
+        self.paths.ensure_dir(survey_dir)
 
         # 加载/初始化进度文件
         progress_path = str(self.paths.survey_progress)
@@ -436,7 +427,7 @@ class ResearchOrchestrator:
         )
         model = _cfg.llm.default_model
         topic_title = self.topic_title
-        os.makedirs(summaries_dir, exist_ok=True)
+        self.paths.ensure_dir(summaries_dir)
 
         lock = threading.Lock()
         total = len(papers)
@@ -584,7 +575,7 @@ class ResearchOrchestrator:
         print(f"{'='*60}")
 
         eda_dir = str(self.paths.eda_dir)
-        os.makedirs(eda_dir, exist_ok=True)
+        self.paths.ensure_dir(eda_dir)
 
         agent = make_eda_guide_agent(self.topic_dir,
                                      allowed_dirs=[eda_dir, str(self.paths.topic_dir)])
@@ -609,8 +600,8 @@ class ResearchOrchestrator:
 
         eda_plots_dir = str(self.paths.eda_plots_dir)
         eda_scripts_dir = str(self.paths.eda_scripts_dir)
-        os.makedirs(eda_plots_dir, exist_ok=True)
-        os.makedirs(eda_scripts_dir, exist_ok=True)
+        self.paths.ensure_dir(eda_plots_dir)
+        self.paths.ensure_dir(eda_scripts_dir)
 
         # 预创建 EDA venv
         eda_dir = str(self.paths.eda_dir)
@@ -708,21 +699,12 @@ class ResearchOrchestrator:
         survey, baselines, failed = "", "", ""
         datasets_md, metrics_md = "", ""
 
-        # 根据是否有 topic_dir 确定路径
-        if self.topic_dir:
-            paths = {
-                "survey": str(self.paths.survey_md),
-                "baselines": str(self.paths.baselines_md),
-                "datasets": str(self.paths.datasets_md),
-                "metrics": str(self.paths.metrics_md),
-            }
-        else:
-            paths = {
-                "survey": os.path.join(self.project_root, "knowledge", "survey.md"),
-                "baselines": os.path.join(self.project_root, "knowledge", "baselines.md"),
-                "datasets": os.path.join(self.project_root, "knowledge", "datasets.md"),
-                "metrics": os.path.join(self.project_root, "knowledge", "metrics.md"),
-            }
+        paths = {
+            "survey": str(self.paths.survey_md),
+            "baselines": str(self.paths.baselines_md),
+            "datasets": str(self.paths.datasets_md),
+            "metrics": str(self.paths.metrics_md),
+        }
 
         for key, path in paths.items():
             if os.path.exists(path):
@@ -736,8 +718,8 @@ class ResearchOrchestrator:
         if os.path.exists(failed_path):
             failed = read_file(failed_path)
 
-        ideas_dir = str(self.paths.ideas_dir) if self.topic_dir else os.path.join(self.project_root, "ideas")
-        os.makedirs(ideas_dir, exist_ok=True)
+        ideas_dir = str(self.paths.ideas_dir)
+        self.paths.ensure_dir(ideas_dir)
 
         prompt = agent.build_prompt(
             topic_title=self.topic_title,
@@ -755,7 +737,7 @@ class ResearchOrchestrator:
         # 上传所有 idea proposal 到知识库
         if os.path.exists(ideas_dir):
             for d in os.listdir(ideas_dir):
-                proposal_path = os.path.join(ideas_dir, d, "proposal.md")
+                proposal_path = str(self.paths.idea_proposal(d))
                 self._upload_single_artifact(proposal_path)
 
         # 评分与排序
@@ -809,7 +791,7 @@ class ResearchOrchestrator:
 
         # 创建 refinement 目录
         refinement_dir = str(self.paths.idea_refinement_dir(idea_id))
-        os.makedirs(refinement_dir, exist_ok=True)
+        self.paths.ensure_dir(refinement_dir)
 
         # 检查是否存在上一轮理论审查
         theory_review_path = ""
