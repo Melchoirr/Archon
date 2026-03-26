@@ -188,10 +188,10 @@ class ResearchFSM:
         """打印所有 FSM 状态"""
         lines = ["[FSM Status]", f"  Topic: {self.snapshot.topic_state}"]
         for idea_id, state in sorted(self.snapshot.idea_states.items()):
-            retries = ", ".join(f"{k}:{v}" for k, v in state.retry_counts.items() if v > 0)
-            retry_str = f" retries=[{retries}]" if retries else ""
+            counts = ", ".join(f"{k}:V{v}" for k, v in state.pass_counts.items() if v > 0)
+            counts_str = f" [{counts}]" if counts else ""
             lines.append(f"  {idea_id}: {state.current_state} "
-                         f"(S{state.step_id}/V{state.version}){retry_str}")
+                         f"(S{state.step_id}){counts_str}")
         return "\n".join(lines)
 
     def history(self, idea_id: str = None) -> list[TransitionRecord]:
@@ -211,9 +211,14 @@ class ResearchFSM:
     # ── 单步核心逻辑 ─────────────────────────────────────────
 
     def _step_topic(self) -> TransitionRecord | None:
-        """Topic 级单步：执行 → 评估 → 确认 → 记录 → 更新"""
+        """Topic 级单步：递增 → 执行 → 评估 → 确认 → 记录 → 更新"""
         state = self.snapshot.topic_state
-        print(f"\n[FSM] Topic 状态: {state}")
+
+        # 执行前递增
+        self.snapshot.topic_pass_counts[state] = \
+            self.snapshot.topic_pass_counts.get(state, 0) + 1
+        ver = self.snapshot.topic_pass_counts[state]
+        print(f"\n[FSM] Topic 状态: {state} V{ver}")
 
         self._execute_topic_state(state)
         next_state, decision = self._evaluate_topic_transition(state)
@@ -233,17 +238,19 @@ class ResearchFSM:
         record = self._record_transition(
             state, next_state, self._build_trigger(decision),
             verdict_summary=self._extract_summary(decision))
-        self.snapshot.topic_retry_counts[state] = \
-            self.snapshot.topic_retry_counts.get(state, 0) + 1
         self.snapshot.topic_state = next_state
         self._persist_snapshot()
         return record
 
     def _step_idea(self, idea_id: str, feedback: str) -> tuple[TransitionRecord | None, str]:
-        """Idea 级单步：执行 → 评估 → 确认 → 记录 → 更新。返回 (record, next_feedback)"""
+        """Idea 级单步：递增 → 执行 → 评估 → 确认 → 记录 → 更新。返回 (record, next_feedback)"""
         idea_fsm = self.snapshot.idea_states[idea_id]
         state = idea_fsm.current_state
-        print(f"\n[FSM] {idea_id} 状态: {state} (S{idea_fsm.step_id}/V{idea_fsm.version})")
+
+        # 执行前递增 pass_counts，这样 orchestrator 拿到的就是当前版本号
+        idea_fsm.pass_counts[state] = idea_fsm.pass_counts.get(state, 0) + 1
+        ver = idea_fsm.pass_counts[state]
+        print(f"\n[FSM] {idea_id} 状态: {state} V{ver}")
 
         self._execute_idea_state(state, idea_id, idea_fsm, feedback)
         next_state, decision = self._evaluate_idea_transition(state, idea_id, idea_fsm)
@@ -251,15 +258,11 @@ class ResearchFSM:
         # auto 重试上限
         next_state = self._apply_idea_retry_limit(state, next_state, idea_fsm, decision)
 
-        # 版本递增
-        if state == "analyze" and next_state == "experiment":
-            idea_fsm.version += 1
-
         # 用户确认
         if not self.auto and (state, next_state) in USER_CONFIRM_TRANSITIONS:
             next_state = self._prompt_user(
                 state, next_state, decision, IDEA_OPTIONS,
-                extra_info=f"{idea_id} S{idea_fsm.step_id}/V{idea_fsm.version}")
+                extra_info=f"{idea_id} {state} V{ver}")
         if next_state == "_quit":
             return None, ""
 
@@ -267,7 +270,6 @@ class ResearchFSM:
         record = self._record_transition(
             state, next_state, self._build_trigger(decision),
             idea_id=idea_id, verdict_summary=self._extract_summary(decision))
-        idea_fsm.retry_counts[state] = idea_fsm.retry_counts.get(state, 0) + 1
 
         # 提取 feedback
         next_feedback = ""
@@ -285,7 +287,7 @@ class ResearchFSM:
         if state == "elaborate":
             return self.orch.phase_elaborate()
         elif state == "survey":
-            round_num = self.snapshot.topic_retry_counts.get("survey", 0) + 1
+            round_num = self.snapshot.topic_pass_counts.get("survey", 1)
             return self.orch.phase_survey(round_num=round_num)
         elif state == "ideation":
             return self.orch.phase_ideation()
@@ -302,9 +304,11 @@ class ResearchFSM:
             "code": lambda: self.orch.phase_code(idea_id),
             "debug": lambda: self.orch.phase_debug(idea_id),
             "experiment": lambda: self.orch.phase_experiment(
-                idea_id, step_id=idea_fsm.step_id, version=idea_fsm.version),
+                idea_id, step_id=idea_fsm.step_id,
+                version=idea_fsm.pass_counts.get("experiment", 1)),
             "analyze": lambda: self.orch.phase_analyze(
-                idea_id, step_id=idea_fsm.step_id, version=idea_fsm.version),
+                idea_id, step_id=idea_fsm.step_id,
+                version=idea_fsm.pass_counts.get("experiment", 1)),
             "conclude": lambda: self.orch.phase_conclude(idea_id),
         }
         handler = dispatch.get(state)
@@ -322,7 +326,7 @@ class ResearchFSM:
             decision = self.evaluators["survey"].parse_decision(raw)
             if decision.verdict == SurveyVerdict.sufficient:
                 return "ideation", raw
-            survey_rounds = self.snapshot.topic_retry_counts.get("survey", 0)
+            survey_rounds = self.snapshot.topic_pass_counts.get("survey", 0)
             if survey_rounds >= MAX_RETRIES.get("survey", 3):
                 return "ideation", raw
             return "survey", raw
@@ -382,7 +386,7 @@ class ResearchFSM:
     def _apply_topic_retry_limit(self, state: str, next_state: str) -> str:
         if not self.auto or state not in MAX_RETRIES:
             return next_state
-        if self.snapshot.topic_retry_counts.get("survey", 0) >= MAX_RETRIES.get("survey", 3):
+        if self.snapshot.topic_pass_counts.get("survey", 0) >= MAX_RETRIES.get("survey", 3):
             return "ideation"
         return next_state
 
@@ -390,7 +394,7 @@ class ResearchFSM:
                                  idea_fsm: IdeaFSMState, decision) -> str:
         if not self.auto or state not in MAX_RETRIES:
             return next_state
-        if idea_fsm.retry_counts.get(state, 0) < MAX_RETRIES[state]:
+        if idea_fsm.pass_counts.get(state, 0) < MAX_RETRIES[state]:
             return next_state
         if state == "analyze":
             met_ratio = decision.get("expectations_met_ratio", 0) \
@@ -466,7 +470,7 @@ class ResearchFSM:
             print(f"  迭代趋势: {trend}")
 
     def _topic_prompt_info(self) -> str:
-        rounds = self.snapshot.topic_retry_counts.get("survey", 0)
+        rounds = self.snapshot.topic_pass_counts.get("survey", 0)
         if rounds > 0:
             return f"survey {rounds}/{MAX_RETRIES.get('survey', 3)}"
         return ""
@@ -499,7 +503,8 @@ class ResearchFSM:
                     else:
                         experiment_plan = content
 
-            v_dir = self.paths.version_dir(idea_id, idea_fsm.step_id, idea_fsm.version)
+            v_dir = self.paths.version_dir(idea_id, idea_fsm.step_id,
+                                                idea_fsm.pass_counts.get("experiment", 1))
             if v_dir:
                 for path, target in [
                     (v_dir / "metrics.json", "metrics"),
@@ -517,7 +522,7 @@ class ResearchFSM:
             "metrics_json": metrics_json,
             "experiment_plan": experiment_plan,
             "iteration_history": self._build_iteration_history(idea_id, idea_fsm),
-            "retry_count": idea_fsm.retry_counts.get("experiment", 0),
+            "retry_count": idea_fsm.pass_counts.get("experiment", 0),
             "max_retries": MAX_RETRIES["experiment"],
         }
 
@@ -563,7 +568,7 @@ class ResearchFSM:
         if not step_dir or not step_dir.exists():
             return "无历史迭代数据"
         lines = []
-        for v in range(1, idea_fsm.version + 1):
+        for v in range(1, idea_fsm.pass_counts.get("experiment", 1) + 1):
             metrics_path = step_dir / f"V{v}" / "metrics.json"
             if metrics_path.exists():
                 try:
@@ -620,9 +625,15 @@ class ResearchFSM:
             try:
                 data = yaml.safe_load(snapshot_path.read_text(encoding="utf-8")) or {}
                 data.pop("transition_history", None)
+                # 兼容旧版字段名
+                if "topic_retry_counts" in data:
+                    data["topic_pass_counts"] = data.pop("topic_retry_counts")
                 for s in data.get("idea_states", {}).values():
                     if isinstance(s, dict):
                         s.pop("feedback", None)
+                        s.pop("version", None)
+                        if "retry_counts" in s:
+                            s["pass_counts"] = s.pop("retry_counts")
                 return FSMSnapshot(**data)
             except Exception as e:
                 logger.warning(f"FSM 快照加载失败: {e}，尝试从文件系统恢复")

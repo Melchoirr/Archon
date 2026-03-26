@@ -43,7 +43,6 @@ class ResearchOrchestrator:
             config_path: 全局 config.yaml 路径（项目根）。
         """
         self.project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.default_max_iter = 3
 
         # 初始化 PathManager（先用临时 topic_dir 以便 find_latest_topic）
         _tmp_paths = PathManager(self.project_root, topic_dir)
@@ -147,14 +146,14 @@ class ResearchOrchestrator:
 
         # 确定输出目录
         summaries_dir = str(self.paths.summaries_dir)
-        self.paths.ensure_dir(summaries_dir)
+        os.makedirs(summaries_dir, exist_ok=True)
 
         survey_dir = str(self.paths.survey_dir)
         baselines_path = str(self.paths.baselines_md)
         datasets_path = str(self.paths.datasets_md)
         metrics_path = str(self.paths.metrics_md)
 
-        self.paths.ensure_dir(survey_dir)
+        os.makedirs(survey_dir, exist_ok=True)
 
         # 加载/初始化进度文件
         progress_path = str(self.paths.survey_progress)
@@ -427,7 +426,7 @@ class ResearchOrchestrator:
         )
         model = _cfg.llm.default_model
         topic_title = self.topic_title
-        self.paths.ensure_dir(summaries_dir)
+        os.makedirs(summaries_dir, exist_ok=True)
 
         lock = threading.Lock()
         total = len(papers)
@@ -575,7 +574,7 @@ class ResearchOrchestrator:
         print(f"{'='*60}")
 
         eda_dir = str(self.paths.eda_dir)
-        self.paths.ensure_dir(eda_dir)
+        os.makedirs(eda_dir, exist_ok=True)
 
         agent = make_eda_guide_agent(self.topic_dir,
                                      allowed_dirs=[eda_dir, str(self.paths.topic_dir)])
@@ -600,8 +599,8 @@ class ResearchOrchestrator:
 
         eda_plots_dir = str(self.paths.eda_plots_dir)
         eda_scripts_dir = str(self.paths.eda_scripts_dir)
-        self.paths.ensure_dir(eda_plots_dir)
-        self.paths.ensure_dir(eda_scripts_dir)
+        os.makedirs(eda_plots_dir, exist_ok=True)
+        os.makedirs(eda_scripts_dir, exist_ok=True)
 
         # 预创建 EDA venv
         eda_dir = str(self.paths.eda_dir)
@@ -721,7 +720,7 @@ class ResearchOrchestrator:
             failed = read_file(failed_path)
 
         ideas_dir = str(self.paths.ideas_dir)
-        self.paths.ensure_dir(ideas_dir)
+        os.makedirs(ideas_dir, exist_ok=True)
 
         prompt = agent.build_prompt(
             topic_title=self.topic_title,
@@ -793,7 +792,7 @@ class ResearchOrchestrator:
 
         # 创建 refinement 目录
         refinement_dir = str(self.paths.idea_refinement_dir(idea_id))
-        self.paths.ensure_dir(refinement_dir)
+        os.makedirs(refinement_dir, exist_ok=True)
 
         # 检查是否存在上一轮理论审查
         theory_review_path = ""
@@ -962,7 +961,7 @@ class ResearchOrchestrator:
 
         # 确定结果目录
         results_dir = str(self.paths.idea_results_dir(idea_id))
-        self.paths.ensure_dir(results_dir)
+        os.makedirs(results_dir, exist_ok=True)
 
         # 确定 venv 路径
         venv_dir = self.paths.idea_venv_dir(idea_id)

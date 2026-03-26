@@ -63,13 +63,12 @@ class IdeaFSMState(BaseModel):
     """单个 idea 的 FSM 运行时状态（纯恢复数据）"""
     current_state: str = "refine"
     step_id: str = "S01"
-    version: int = 1
-    retry_counts: dict[str, int] = Field(default_factory=dict)
+    pass_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class FSMSnapshot(BaseModel):
     """持久化 FSM 快照 → {topic_dir}/fsm_state.yaml（纯恢复数据）"""
-    schema_version: int = 2
+    schema_version: int = 3
     topic_state: str = "elaborate"
-    topic_retry_counts: dict[str, int] = Field(default_factory=dict)
+    topic_pass_counts: dict[str, int] = Field(default_factory=dict)
     idea_states: dict[str, IdeaFSMState] = Field(default_factory=dict)
