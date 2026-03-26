@@ -82,7 +82,7 @@ class ContextManager:
             full_path = idea_dir / rel_path
             content = self._read_file_safe(full_path)
             if content:
-                sections.append(f"## {os.path.basename(rel_path)}\n{content}")
+                sections.append(f"## {Path(rel_path).name}\n{content}")
         return sections
 
     def _collect_global_files(self, phase: str) -> list:

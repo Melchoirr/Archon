@@ -89,7 +89,7 @@ from tools.knowledge_base import search_knowledge_base
 （暂无）
 
 ## 变化
-### [重构] 2026-03-26 16:47 — memory.py 消除硬编码路径拼接
+### [重构] 2026-03-26 16:47 — memory.py 消除硬编码路径拼接 (`58ea907`)
 - **目的**：让 query_memory/add_experience 支持直接传入日志文件路径，避免调用方必须拆分为 memory_dir
 - **改动**：新增 `_resolve_log_path()` 统一路径解析；`_load_experiences`/`_save_experiences`/`query_memory`/`add_experience` 均新增可选 `log_path` 参数，提供时直接使用，否则保持原有 memory_dir 拼接行为
 - **验证**：`python -c "from tools.memory import query_memory, add_experience"` 通过
