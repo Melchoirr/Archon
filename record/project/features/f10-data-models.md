@@ -78,7 +78,7 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
-### [实现] 2026-03-26 17:14 — PathManager 新增索引路径 + tool_params 新增注册模型
+### [实现] 2026-03-26 17:14 — PathManager 新增索引路径 + tool_params 新增注册模型 (`2db43ea`)
 - **目的**：为数据集/仓库索引提供路径支持和参数模型
 - **改动**：`shared/paths.py` 新增 `repo_index`（repos_dir/index.yaml）和 `dataset_index`（dataset_cards_dir/index.yaml）属性；`shared/models/tool_params.py` 更新 `CheckLocalKnowledgeParams` 支持 dataset 类型，新增 `RegisterDatasetParams`（name/url/local_path/format/description）和 `RegisterRepoParams`（repo_url/local_path/has_summary）
 - **验证**：`python -c 'from shared.models.tool_params import RegisterDatasetParams, RegisterRepoParams'` 通过

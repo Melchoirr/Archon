@@ -97,7 +97,7 @@ from tools.knowledge_base import search_knowledge_base
 （暂无）
 
 ## 变化
-### [实现] 2026-03-26 17:14 — 新增统一资源预检模块 knowledge_index.py
+### [实现] 2026-03-26 17:14 — 新增统一资源预检模块 knowledge_index.py (`2db43ea`)
 - **目的**：数据集和仓库缺乏与论文对齐的去重/预检机制，`check_local_knowledge` 不支持 dataset 类型
 - **改动**：新增 `tools/knowledge_index.py`（从 paper_manager 迁移 check_local_knowledge + 扩展 dataset/repo 分支 + URL 归一化 + register_dataset/register_repo）；`paper_manager.py` 删除旧 check_local_knowledge；6 个 agent 文件 import 路径改为 `tools.knowledge_index`
 - **验证**：`python -c 'import tools'` 通过；`grep` 确认无旧 import 残留；所有 agent import 通过

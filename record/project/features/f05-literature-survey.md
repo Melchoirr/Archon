@@ -76,7 +76,7 @@ python run_research.py survey --topic T001 --step 4
 （暂无）
 
 ## 变化
-### [重构] 2026-03-26 17:14 — DataAgent 增加数据集预检/注册 + check_local_knowledge 迁移
+### [重构] 2026-03-26 17:14 — DataAgent 增加数据集预检/注册 + check_local_knowledge 迁移 (`2db43ea`)
 - **目的**：DataAgent 用 wget 直接下载无预检，数据集无索引无去重；check_local_knowledge 从 paper_manager 迁移到 knowledge_index
 - **改动**：`data_agent.py` 新增 check_local_knowledge/register_dataset 工具注册，system prompt 增加 Phase 0 预检步骤和 Phase 1 注册步骤；`survey_helpers.py` import 改为 `from tools.knowledge_index import check_local_knowledge`
 - **验证**：`python -c 'from agents.data_agent import DataAgent; from agents.survey_helpers import make_search_agent'` 通过

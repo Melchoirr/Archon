@@ -70,7 +70,7 @@ print(web_search("time series forecasting", max_results=3))
 （暂无）
 
 ## 变化
-### [重构] 2026-03-26 17:14 — github_repo 集成 repo 索引去重
+### [重构] 2026-03-26 17:14 — github_repo 集成 repo 索引去重 (`2db43ea`)
 - **目的**：clone_repo 仅做目录存在检查，同仓库换 target_dir 会重复 clone；无 URL 归一化
 - **改动**：`github_repo.py` 删除 `REPOS_DIR` 常量，import `knowledge_index` 的归一化/注册函数；`clone_repo` 先查索引再查目录，clone 成功自动注册；`summarize_repo` 生成后更新索引 has_summary；`list_repos` 索引优先 + 目录 fallback
 - **验证**：`python -c 'from tools.github_repo import clone_repo, list_repos'` 通过
