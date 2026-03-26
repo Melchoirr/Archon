@@ -9,7 +9,6 @@ from shared.models.tool_params import (
 SYSTEM_PROMPT_TEMPLATE = """你是科研领域分析专家。你的任务是展开和梳理研究课题的调研背景。
 
 研究课题: {topic_title}
-领域: {topic_domain}
 
 ## 核心目标
 
@@ -64,7 +63,6 @@ class ElaborateAgent(BaseAgent):
 
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
             topic_title=topic_title,
-            topic_domain="",
             output_path=output_path,
         )
 

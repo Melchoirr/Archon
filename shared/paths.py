@@ -9,15 +9,18 @@ from pathlib import Path
 class PathManager:
     """项目路径管理器。一个实例对应一个 topic（或仅全局）。"""
 
-    def __init__(self, project_root: str | Path, topic_dir: str | Path | None = None):
+    def __init__(self, project_root: str | Path, topic_dir: str | Path | None = None,
+                 research_root: str | Path | None = None):
         self.root = Path(project_root)
+        self.research = Path(research_root) if research_root \
+            else self.root / "research"
         self._topic = Path(topic_dir) if topic_dir else None
 
-    # ── 全局路径 ──────────────────────────────────────────────
+    # ── 研究内容路径（位于 research/ 目录）─────────────────────
 
     @property
     def knowledge_dir(self) -> Path:
-        return self.root / "knowledge"
+        return self.research / "knowledge"
 
     @property
     def papers_dir(self) -> Path:
@@ -57,7 +60,7 @@ class PathManager:
 
     @property
     def memory_dir(self) -> Path:
-        return self.root / "memory"
+        return self.research / "memory"
 
     @property
     def experience_log(self) -> Path:
@@ -73,7 +76,7 @@ class PathManager:
 
     @property
     def topics_dir(self) -> Path:
-        return self.root / "topics"
+        return self.research / "topics"
 
     # ── Topic 路径 ─────────────────────────────────────────────
 
@@ -173,7 +176,7 @@ class PathManager:
 
     @property
     def data_dir(self) -> Path:
-        return self.root / "shared" / "data"
+        return self.research / "data"
 
     @property
     def ideas_dir(self) -> Path:

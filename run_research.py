@@ -63,7 +63,7 @@ def _parse_idea_ref(ref: str) -> tuple:
 
 def _find_topic_dir(topic_id: str = None) -> str | None:
     """查找 topic 目录"""
-    topics_dir = "topics"
+    topics_dir = "research/topics"
     if not os.path.exists(topics_dir):
         return None
     if topic_id:
@@ -85,7 +85,7 @@ def _find_topic_dir_by_md(md_ref: str) -> str | None:
     stem = os.path.splitext(basename)[0].lower()
     stem_clean = re.sub(r'[^a-zA-Z0-9_-]', '_', stem)
 
-    topics_dir = "topics"
+    topics_dir = "research/topics"
     if not os.path.exists(topics_dir):
         return None
     for d in sorted(os.listdir(topics_dir)):
@@ -189,32 +189,30 @@ def do_init(md_ref: str) -> str:
 
     print("Initializing project...")
 
-    # 创建全局目录
-    global_dirs = [
-        "knowledge/papers/pdf", "knowledge/papers/parsed",
-        "knowledge/papers/summaries", "knowledge/repos",
-        "knowledge/dataset_cards",
-        "shared/data", "shared/utils", "shared/baselines",
-        "memory", "topics",
-    ]
-    for d in global_dirs:
-        os.makedirs(d, exist_ok=True)
+    # 创建全局目录（用 PathManager）
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    _pm = PathManager(project_root)
+    for d in [_pm.pdf_dir, _pm.parsed_dir, _pm.summaries_dir, _pm.repos_dir,
+              _pm.dataset_cards_dir, _pm.data_dir,
+              _pm.root / "shared" / "utils", _pm.root / "shared" / "baselines",
+              _pm.memory_dir, _pm.topics_dir]:
+        _pm.ensure_dir(d)
 
     # 初始化记忆文件
-    for fname, content in [
-        ("memory/insights.md", "# Research Insights\n\n"),
-        ("memory/failed_ideas.md", "# Failed Ideas Log\n\n"),
+    for fpath, content in [
+        (_pm.insights, "# Research Insights\n\n"),
+        (_pm.failed_ideas, "# Failed Ideas Log\n\n"),
     ]:
-        if not os.path.exists(fname):
-            with open(fname, "w") as f:
+        if not fpath.exists():
+            with open(fpath, "w") as f:
                 f.write(content)
 
     # 查找 md 文件
     md_path = md_ref
     if not os.path.exists(md_path):
-        md_path = os.path.join("topics", md_ref)
+        md_path = str(_pm.topics_dir / md_ref)
     if not os.path.exists(md_path):
-        md_path = os.path.join("topics", md_ref + ".md")
+        md_path = str(_pm.topics_dir / (md_ref + ".md"))
     if not os.path.exists(md_path):
         print(f"  ERROR: 找不到 topic 文件: {md_ref}")
         sys.exit(1)
@@ -235,22 +233,21 @@ def do_init(md_ref: str) -> str:
     print(f"  标题: {topic_title}")
 
     # 分配 topic 编号
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    _pm = PathManager(project_root)
     _rs = IdeaRegistryService(_pm)
     topic_id = _rs.next_topic_id()
     brief = _make_topic_brief(topic_title, md_path)
-    topic_dir = os.path.join("topics", f"{topic_id}_{brief}")
-    os.makedirs(topic_dir, exist_ok=True)
+    topic_dir = str(_pm.topics_dir / f"{topic_id}_{brief}")
+    topic_paths = PathManager(project_root, topic_dir)
+    topic_paths.ensure_dir(topic_paths.topic_dir)
 
     # 创建 topic 子目录
-    for d in ["survey/papers", "ideas", "phase_logs"]:
-        os.makedirs(os.path.join(topic_dir, d), exist_ok=True)
-        print(f"  Created {topic_dir}/{d}/")
+    for d in [topic_paths.survey_dir / "papers", topic_paths.ideas_dir, topic_paths.phase_logs_dir]:
+        topic_paths.ensure_dir(d)
+        print(f"  Created {d}/")
 
     # 复制原始 md
     import shutil
-    shutil.copy2(md_path, os.path.join(topic_dir, "topic_spec.md"))
+    shutil.copy2(md_path, str(topic_paths.topic_spec))
     print(f"  Copied {md_path} -> {topic_dir}/topic_spec.md")
 
     # 创建 idea_registry.yaml
@@ -260,13 +257,12 @@ def do_init(md_ref: str) -> str:
         topic=topic_title,
         description=md_content,
     ))
-    topic_paths = PathManager(project_root, topic_dir)
     topic_rs = IdeaRegistryService(topic_paths)
     topic_rs.save(registry)
 
     print(f"\n  Topic ID: {topic_id}")
     print(f"  目录: {topic_dir}/")
-    print(f"  课题: {topic_info['title']}")
+    print(f"  课题: {topic_title}")
 
     print("\nVerifying environment...")
     _verify_environment()

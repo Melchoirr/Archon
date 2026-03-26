@@ -9,14 +9,8 @@ build/
 .claude/memory/
 .venv/
 
-# Agent 运行时产出
-topics/
-knowledge/papers/
-knowledge/repos/
-knowledge/topics/
-shared/data/
-shared/topics/
-memory/
+# 研究内容（独立 git 仓库）
+research/
 
 # 临时调试脚本
 debug_*.py

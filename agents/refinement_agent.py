@@ -119,8 +119,7 @@ class RefinementAgent(BaseAgent):
         self.register_tool("read_paper_section", read_paper_section, ReadPaperSectionParams)
         self.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
 
-    def build_prompt(self, *, topic_title: str, dataset_names: str = "",
-                     metric_names: str = "", topic_dir: str = "",
+    def build_prompt(self, *, topic_title: str, topic_dir: str = "",
                      idea_dir: str, proposal: str, context: str = "",
                      past_exp: str = "", refinement_dir: str,
                      theory_review_path: str = "",
@@ -129,12 +128,6 @@ class RefinementAgent(BaseAgent):
 
 ## 研究课题
 {topic_title}
-
-## 可用数据集
-{dataset_names}
-
-## 评估指标
-{metric_names}
 
 ## 路径信息
 - topic_dir: {topic_dir}

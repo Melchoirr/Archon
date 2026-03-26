@@ -16,7 +16,7 @@ def _resolve_log_path(log_path: str | None, memory_dir: str) -> str:
     return os.path.join(memory_dir, "experience_log.yaml")
 
 
-def _load_experiences(memory_dir: str = "memory", *, log_path: str | None = None) -> list:
+def _load_experiences(memory_dir: str = "research/memory", *, log_path: str | None = None) -> list:
     experience_log = _resolve_log_path(log_path, memory_dir)
     if not os.path.exists(experience_log):
         return []
@@ -25,7 +25,7 @@ def _load_experiences(memory_dir: str = "memory", *, log_path: str | None = None
     return data
 
 
-def _save_experiences(experiences: list, memory_dir: str = "memory", *, log_path: str | None = None):
+def _save_experiences(experiences: list, memory_dir: str = "research/memory", *, log_path: str | None = None):
     experience_log = _resolve_log_path(log_path, memory_dir)
     os.makedirs(os.path.dirname(experience_log) or ".", exist_ok=True)
     with open(experience_log, "w", encoding="utf-8") as f:
@@ -33,7 +33,7 @@ def _save_experiences(experiences: list, memory_dir: str = "memory", *, log_path
 
 
 def query_memory(tags: str = "", phase: str = "", idea_id: str = "",
-                  topic_id: str = "", memory_dir: str = "memory",
+                  topic_id: str = "", memory_dir: str = "research/memory",
                   log_path: str | None = None) -> str:
     """查询经验记忆。可按 tags、phase、idea_id、topic_id 过滤。
 
@@ -68,7 +68,7 @@ def add_experience(
     details: str = "",
     tags: str = "",
     topic_id: str = "",
-    memory_dir: str = "memory",
+    memory_dir: str = "research/memory",
     log_path: str | None = None,
 ) -> str:
     """添加经验记录。

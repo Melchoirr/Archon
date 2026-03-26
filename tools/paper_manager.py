@@ -17,7 +17,7 @@ PARSE_BACKEND = os.environ.get("PAPER_PARSE_BACKEND", "zhipu")
 
 
 def _default_base_dir() -> str:
-    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge", "papers")
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "research", "knowledge", "papers")
 
 
 def _get_paths(base_dir: str = "", *, path_manager=None) -> dict:

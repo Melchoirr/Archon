@@ -11,7 +11,7 @@ from tools.knowledge_index import (
 logger = logging.getLogger(__name__)
 
 _DEFAULT_REPOS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "knowledge", "repos")
+    os.path.dirname(os.path.dirname(__file__)), "research", "knowledge", "repos")
 
 
 def _ensure_repos_dir(repos_dir: str = ""):

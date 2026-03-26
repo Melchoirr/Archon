@@ -25,8 +25,6 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研方案设计专家。你的任务是
    - 关键实现细节: 数据流维度变化、关键超参数选择依据
 3. **与现有方法的对比**（≥300字）: 与 baseline 的理论差异，用表格对比关键设计决策
 4. **实验设计初步方案**（≥300字）:
-   - 数据集：{dataset_names}
-   - 评估指标：{metric_names}
    - 消融实验设计: 每个创新组件对应一个消融实验
 5. **风险评估**（≥200字）: 至少 3 个可能失败的原因，每个配缓解策略
 
@@ -61,8 +59,6 @@ class DesignAgent(BaseAgent):
         topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
             topic_title=topic_title,
-            dataset_names="",
-            metric_names="",
         )
 
         super().__init__(

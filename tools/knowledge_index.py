@@ -55,7 +55,7 @@ def normalize_repo_url(url: str) -> str:
 
 def _default_repo_index_path() -> str:
     return os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                        "knowledge", "repos", "index.yaml")
+                        "research", "knowledge", "repos", "index.yaml")
 
 
 def register_repo(repo_url: str, local_path: str,
@@ -123,7 +123,7 @@ def _lookup_repo_index(query_lower: str) -> list[str]:
 
 def _default_dataset_index_path() -> str:
     return os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                        "knowledge", "dataset_cards", "index.yaml")
+                        "research", "knowledge", "dataset_cards", "index.yaml")
 
 
 def _default_data_dir() -> str:
@@ -209,7 +209,7 @@ def check_local_knowledge(query: str, resource_type: str = "all",
         # 目录 fallback（捕获未入索引的旧仓库）
         if not repos_dir:
             repos_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                     "knowledge", "repos")
+                                     "research", "knowledge", "repos")
         if os.path.isdir(repos_dir):
             repo_name = query.rstrip("/").split("/")[-1].replace(".git", "").lower()
             # 收集索引中已知的 local_path，避免重复报告

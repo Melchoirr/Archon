@@ -86,146 +86,215 @@ def extract_search_queries(client, model: str, proposal_text: str) -> list[str]:
     return [proposal_text[:100]]
 
 
-def search_prior_work(queries: list[str]) -> list[dict]:
-    """对每个 query 调用 search_papers（含 abstract），去重合并"""
+def search_prior_work(queries: list[str], proposal_text: str = "") -> list[dict]:
+    """两轮搜索：keyword + semantic fallback，提高召回覆盖度。"""
     seen_ids = set()
     results = []
+
+    def _collect(raw: str):
+        papers = json.loads(raw)
+        if isinstance(papers, dict) and "error" in papers:
+            return
+        for p in papers:
+            pid = p.get("paperId", "")
+            if pid and pid not in seen_ids:
+                seen_ids.add(pid)
+                results.append({
+                    "title": p.get("title", ""),
+                    "year": p.get("year"),
+                    "citation_count": p.get("citationCount", 0),
+                    "arxiv_id": p.get("externalIds", {}).get("ArXiv", ""),
+                    "venue": p.get("venue", ""),
+                    "abstract": p.get("abstract", ""),
+                })
+
+    # 第一轮：keyword 搜索
     for query in queries:
         try:
-            raw = search_papers(query, limit=5, year_range="2022-",
-                                include_abstract=True)
-            papers = json.loads(raw)
-            if isinstance(papers, dict) and "error" in papers:
-                continue
-            for p in papers:
-                pid = p.get("paperId", "")
-                if pid and pid not in seen_ids:
-                    seen_ids.add(pid)
-                    results.append({
-                        "title": p.get("title", ""),
-                        "year": p.get("year"),
-                        "citation_count": p.get("citationCount", 0),
-                        "arxiv_id": p.get("externalIds", {}).get("ArXiv", ""),
-                        "venue": p.get("venue", ""),
-                        "abstract": p.get("abstract", ""),
-                    })
+            _collect(search_papers(query, limit=8, year_range="2022-",
+                                   include_abstract=True))
         except Exception as e:
             logger.warning(f"搜索 '{query}' 失败: {e}")
+
+    # 第二轮：semantic 搜索兜底（结果不足时用 proposal 原文做语义检索）
+    if len(results) < 5 and proposal_text:
+        try:
+            logger.info("  keyword 结果不足，启用 semantic 搜索兜底")
+            _collect(search_papers(proposal_text[:500], limit=10,
+                                   year_range="2020-", include_abstract=True,
+                                   search_mode="semantic"))
+        except Exception as e:
+            logger.warning(f"semantic 搜索失败: {e}")
+
     return results
 
 
-SIMILARITY_HIGH = 0.85   # 高度重复阈值
-SIMILARITY_MEDIUM = 0.75  # 中度相似阈值
+OVERLAP_LEVELS = ("duplicate", "high", "medium", "low", "none")
+
+PAIRWISE_PROMPT = """你是学术创新性审查专家。请深入分析以下 Research Proposal 与已有论文的方法重叠程度。
+
+## Research Proposal
+{proposal}
+
+## 已有论文
+标题: {paper_title}
+摘要: {paper_abstract}
+
+请从以下维度逐一分析：
+1. **问题定义**：两者解决的是否是同一个问题？问题的表述和范围是否相同？
+2. **核心方法**：技术路线是否相同或高度相似？关键算法/模型/框架是否一致？
+3. **创新增量**：如果方法有相似之处，Proposal 是否在关键环节有实质性的新贡献（而非仅换数据集/微调参数）？
+4. **总体判断**：给出 overlap 等级
+
+overlap 等级定义：
+- duplicate: 核心方法完全相同，无实质新贡献
+- high: 核心方法高度相似，仅有边际改进
+- medium: 共享部分关键技术，但有明显差异化贡献
+- low: 同一领域但技术路线不同
+- none: 问题或领域都不同
+
+请以 JSON 返回（reason 字段请详细说明分析过程）:
+{{"overlap": "none|low|medium|high|duplicate",
+  "reason": "详细分析：问题定义异同 → 方法对比 → 创新增量判断",
+  "shared_method": "共享的核心方法（如有，否则为空字符串）"}}
+只返回 JSON，不要其他内容。"""
 
 
-def _compute_embedding_similarity(proposal_text: str,
-                                  prior_work: list[dict]) -> dict:
-    """计算 proposal 与 prior_work abstracts 的 embedding 相似度。
+def _pairwise_novelty_check(client, model: str, proposal_text: str,
+                            prior_work: list[dict], max_papers: int = 5) -> dict:
+    """对 top-N 有 abstract 的论文，逐篇让 LLM 判断方法重叠度。
 
     Returns:
         {
-            "max_similarity": float,
-            "max_similar_paper": str,  # 最相似论文标题
-            "high_similarity_papers": [...],  # >= SIMILARITY_HIGH 的论文
-            "similarities": [...],  # 每篇论文的相似度
+            "max_overlap": "none"|"low"|"medium"|"high"|"duplicate",
+            "overlapping_papers": [{title, overlap, reason, shared_method}, ...],
         }
     """
-    from tools.embedding import compute_max_similarity
+    import re
 
-    # 收集有 abstract 的论文
-    abstracts = []
-    papers_with_abstract = []
-    for pw in prior_work:
-        abstract = pw.get("abstract", "")
-        if abstract and len(abstract) > 50:
-            abstracts.append(abstract)
-            papers_with_abstract.append(pw)
+    # 筛选有 abstract 的论文
+    papers = [p for p in prior_work if p.get("abstract", "") and len(p["abstract"]) > 100]
+    papers = papers[:max_papers]
 
-    if not abstracts:
-        logger.info("  无可用 abstract，跳过 embedding 相似度检测")
-        return {"max_similarity": 0.0, "max_similar_paper": "",
-                "high_similarity_papers": [], "similarities": []}
+    if not papers:
+        logger.info("  无可用 abstract，跳过 pairwise 对比")
+        return {"max_overlap": "none", "overlapping_papers": []}
 
-    max_sim, max_idx, all_sims = compute_max_similarity(
-        proposal_text, abstracts, dimensions=1024)
+    overlapping = []
+    for p in papers:
+        prompt = PAIRWISE_PROMPT.format(
+            proposal=proposal_text[:6000],
+            paper_title=p["title"],
+            paper_abstract=p["abstract"][:2000],
+        )
+        try:
+            resp = llm_call_with_retry(
+                client, model=model, max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = resp.content[0].text.strip()
+            try:
+                result = json.loads(text)
+            except json.JSONDecodeError:
+                match = re.search(r'\{.*\}', text, re.DOTALL)
+                result = json.loads(match.group()) if match else None
 
-    result = {
-        "max_similarity": round(max_sim, 4),
-        "max_similar_paper": papers_with_abstract[max_idx]["title"] if max_idx >= 0 else "",
-        "high_similarity_papers": [],
-        "similarities": [round(s, 4) for s in all_sims],
-    }
-
-    for i, sim in enumerate(all_sims):
-        if sim >= SIMILARITY_HIGH:
-            result["high_similarity_papers"].append({
-                "title": papers_with_abstract[i]["title"],
-                "similarity": round(sim, 4),
+            if result and result.get("overlap") in OVERLAP_LEVELS:
+                overlapping.append({
+                    "title": p["title"],
+                    "overlap": result["overlap"],
+                    "reason": result.get("reason", ""),
+                    "shared_method": result.get("shared_method", ""),
+                })
+                logger.info(f"  vs '{p['title'][:50]}' → {result['overlap']}")
+            else:
+                logger.warning(f"  pairwise 解析失败: {text[:200]}")
+                overlapping.append({
+                    "title": p["title"], "overlap": "low",
+                    "reason": "解析失败，默认 low", "shared_method": "",
+                })
+        except Exception as e:
+            logger.warning(f"  pairwise 对比失败 '{p['title'][:40]}': {e}")
+            overlapping.append({
+                "title": p["title"], "overlap": "low",
+                "reason": f"调用失败: {e}", "shared_method": "",
             })
 
-    if result["high_similarity_papers"]:
-        titles = ", ".join(p["title"][:50] for p in result["high_similarity_papers"])
-        logger.warning(f"  高度相似论文: {titles}")
-    elif max_sim >= SIMILARITY_MEDIUM:
-        logger.info(f"  最高相似度: {max_sim:.3f} ({result['max_similar_paper'][:50]})")
-    else:
-        logger.info(f"  最高相似度: {max_sim:.3f}（较低，新颖性好）")
+    # 取最高 overlap 等级
+    max_overlap = "none"
+    for item in overlapping:
+        ol = item["overlap"]
+        if ol in OVERLAP_LEVELS and OVERLAP_LEVELS.index(ol) < OVERLAP_LEVELS.index(max_overlap):
+            max_overlap = ol
 
-    return result
+    if max_overlap in ("duplicate", "high"):
+        titles = [i["title"][:50] for i in overlapping if i["overlap"] in ("duplicate", "high")]
+        logger.warning(f"  高重叠论文: {', '.join(titles)}")
+
+    return {"max_overlap": max_overlap, "overlapping_papers": overlapping}
 
 
 def score_idea(client, model: str, proposal_text: str,
                prior_work: list, topic_title: str,
-               similarity_info: dict = None) -> dict:
-    """单次 LLM 调用，结构化评分。结合 embedding 相似度信息。"""
+               pairwise_info: dict = None) -> dict:
+    """单次 LLM 调用，结构化评分。结合 pairwise 创新性对比结果。"""
+    import re
+
     pw_text = ""
     if prior_work:
+        # 构建 pairwise 结果索引（按标题查找）
+        pw_overlaps = {}
+        if pairwise_info:
+            for item in pairwise_info.get("overlapping_papers", []):
+                pw_overlaps[item["title"]] = item
+
         for i, p in enumerate(prior_work[:10], 1):
             arxiv = f", arXiv:{p['arxiv_id']}" if p.get("arxiv_id") else ""
             pw_text += f"{i}. {p['title']} ({p.get('year', '?')}, {p.get('citation_count', 0)} citations{arxiv})\n"
+            # 加入 abstract 摘要
+            abstract = p.get("abstract", "")
+            if abstract:
+                pw_text += f"   摘要: {abstract[:300]}...\n"
+            # 加入 pairwise 对比结果
+            overlap_item = pw_overlaps.get(p["title"])
+            if overlap_item:
+                pw_text += f"   方法重叠度: **{overlap_item['overlap']}** — {overlap_item['reason'][:200]}\n"
+            pw_text += "\n"
     else:
         pw_text = "未找到高度相关的先前工作。"
 
-    # 将 embedding 相似度结果加入 prompt
-    sim_text = ""
-    if similarity_info:
-        max_sim = similarity_info.get("max_similarity", 0)
-        high_papers = similarity_info.get("high_similarity_papers", [])
-        if high_papers:
-            sim_text = (
-                f"\n\n## Embedding 相似度分析（客观指标，必须参考）\n"
-                f"⚠️ 以下论文与本 proposal 的 embedding cosine similarity >= {SIMILARITY_HIGH}，"
-                f"说明方法高度重复，Novelty 不应超过 2 分：\n"
+    # 如果有 pairwise 发现高重叠，在 prompt 中强调
+    novelty_warning = ""
+    if pairwise_info:
+        max_ol = pairwise_info.get("max_overlap", "none")
+        if max_ol == "duplicate":
+            novelty_warning = (
+                "\n\n## 创新性预警（必须参考）\n"
+                "⚠️ Pairwise 对比发现核心方法与已有论文**完全重复**，Novelty 不应超过 1 分。\n"
             )
-            for hp in high_papers:
-                sim_text += f"- {hp['title']} (similarity={hp['similarity']})\n"
-        elif max_sim >= SIMILARITY_MEDIUM:
-            sim_text = (
-                f"\n\n## Embedding 相似度分析\n"
-                f"最相似论文: {similarity_info.get('max_similar_paper', '')}\n"
-                f"相似度: {max_sim:.3f}（中等相似，Novelty 建议 2-3 分）\n"
+        elif max_ol == "high":
+            novelty_warning = (
+                "\n\n## 创新性预警（必须参考）\n"
+                "⚠️ Pairwise 对比发现核心方法与已有论文**高度相似**，Novelty 不应超过 2 分。\n"
             )
-        else:
-            sim_text = (
-                f"\n\n## Embedding 相似度分析\n"
-                f"最高相似度: {max_sim:.3f}（较低，未发现高度相似工作）\n"
+        elif max_ol == "medium":
+            novelty_warning = (
+                "\n\n## 创新性提示\n"
+                "Pairwise 对比发现与已有工作共享部分关键技术，Novelty 建议 2-3 分。\n"
             )
 
     prompt_content = SCORE_PROMPT.format(
         topic_title=topic_title,
         proposal=proposal_text[:8000],
-        prior_work=pw_text + sim_text,
+        prior_work=pw_text + novelty_warning,
     )
 
     resp = llm_call_with_retry(
-        client,
-        model=model,
-        max_tokens=500,
+        client, model=model, max_tokens=1024,
         messages=[{"role": "user", "content": prompt_content}],
     )
     text = resp.content[0].text.strip()
 
-    import re
     try:
         scores = json.loads(text)
     except json.JSONDecodeError:
@@ -245,21 +314,29 @@ def score_idea(client, model: str, proposal_text: str,
                                     "feasibility": "解析失败", "alignment": "解析失败"},
                       "recommendation": "需人工评审"}
 
-    # Embedding 相似度硬约束：高相似度时强制压低 novelty
-    if similarity_info:
-        max_sim = similarity_info.get("max_similarity", 0)
-        if max_sim >= SIMILARITY_HIGH and scores.get("novelty", 3) > 2:
-            logger.info(f"  Embedding 强制: novelty {scores['novelty']} -> 2 (sim={max_sim:.3f})")
+    # Pairwise 硬约束：高重叠时强制压低 novelty
+    if pairwise_info:
+        max_ol = pairwise_info.get("max_overlap", "none")
+        # 找到触发硬约束的论文标题
+        high_papers = [i for i in pairwise_info.get("overlapping_papers", [])
+                       if i["overlap"] in ("duplicate", "high")]
+        cap_title = high_papers[0]["title"][:50] if high_papers else ""
+
+        if max_ol == "duplicate" and scores.get("novelty", 3) > 1:
+            logger.info(f"  Pairwise 强制: novelty {scores['novelty']} -> 1 (duplicate)")
+            scores["novelty"] = 1
+            if "rationale" in scores:
+                scores["rationale"]["novelty"] = f"与 '{cap_title}' 核心方法完全重复"
+        elif max_ol == "high" and scores.get("novelty", 3) > 2:
+            logger.info(f"  Pairwise 强制: novelty {scores['novelty']} -> 2 (high overlap)")
             scores["novelty"] = 2
             if "rationale" in scores:
-                scores["rationale"]["novelty"] = (
-                    f"Embedding 相似度 {max_sim:.3f} >= {SIMILARITY_HIGH}，"
-                    f"与 '{similarity_info.get('max_similar_paper', '')[:50]}' 高度重复"
-                )
-        elif max_sim >= SIMILARITY_MEDIUM and scores.get("novelty", 3) > 3:
-            logger.info(f"  Embedding 压低: novelty {scores['novelty']} -> 3 (sim={max_sim:.3f})")
+                scores["rationale"]["novelty"] = f"与 '{cap_title}' 核心方法高度相似"
+        elif max_ol == "medium" and scores.get("novelty", 3) > 3:
+            logger.info(f"  Pairwise 压低: novelty {scores['novelty']} -> 3 (medium overlap)")
             scores["novelty"] = 3
-        scores["max_similarity"] = round(max_sim, 4)
+
+        scores["max_overlap"] = max_ol
 
     # 用 Score 模型校验并计算 composite
     try:
@@ -282,7 +359,7 @@ def score_idea(client, model: str, proposal_text: str,
 
 def _write_review_md(idea_dir: str, idea_title: str, scores: dict,
                      prior_work: list, rank: int, total: int,
-                     max_similarity: float = 0.0):
+                     pairwise_info: dict = None):
     """写入 review.md"""
     rationale = scores.get("rationale", {})
     rec = scores.get("recommendation", "")
@@ -301,16 +378,20 @@ def _write_review_md(idea_dir: str, idea_title: str, scores: dict,
         "",
     ]
 
-    # Embedding 相似度信息
-    if max_similarity > 0:
-        level = "高度重复" if max_similarity >= SIMILARITY_HIGH else (
-            "中度相似" if max_similarity >= SIMILARITY_MEDIUM else "较低")
+    # Pairwise 创新性对比信息
+    if pairwise_info and pairwise_info.get("overlapping_papers"):
+        max_ol = pairwise_info.get("max_overlap", "none")
         lines.extend([
-            "## Embedding 相似度",
-            f"- 最高 cosine similarity: **{max_similarity:.3f}** ({level})",
-            f"- 阈值: >={SIMILARITY_HIGH} 高度重复, >={SIMILARITY_MEDIUM} 中度相似",
+            "## 创新性对比 (Pairwise)",
+            f"- 最高重叠等级: **{max_ol}**",
             "",
+            "| 论文 | 重叠度 | 分析 |",
+            "|------|--------|------|",
         ])
+        for item in pairwise_info["overlapping_papers"]:
+            reason_short = item["reason"][:100].replace("|", "/").replace("\n", " ")
+            lines.append(f"| {item['title'][:60]} | {item['overlap']} | {reason_short} |")
+        lines.append("")
 
     lines.append("## 检索到的相关工作")
 
@@ -367,16 +448,16 @@ def score_all_ideas(topic_dir: str, client, model: str, topic_title: str,
         queries = extract_search_queries(client, model, proposal_text)
         logger.info(f"  {idea.id} 搜索查询: {queries}")
 
-        # Step 2: 文献检索（含 abstract）
-        prior_work = search_prior_work(queries)
+        # Step 2: 文献检索（keyword + semantic 兜底）
+        prior_work = search_prior_work(queries, proposal_text=proposal_text)
         logger.info(f"  {idea.id} 找到 {len(prior_work)} 篇相关论文")
 
-        # Step 2.5: Embedding 相似度检测
-        similarity_info = _compute_embedding_similarity(proposal_text, prior_work)
+        # Step 2.5: LLM Pairwise 创新性对比
+        pairwise_info = _pairwise_novelty_check(client, model, proposal_text, prior_work)
 
-        # Step 3: LLM 评分（将相似度信息传入）
+        # Step 3: LLM 评分（将 pairwise 结果传入）
         scores = score_idea(client, model, proposal_text, prior_work,
-                            topic_title, similarity_info=similarity_info)
+                            topic_title, pairwise_info=pairwise_info)
 
         scored.append({
             "idea_id": idea.id,
@@ -385,7 +466,7 @@ def score_all_ideas(topic_dir: str, client, model: str, topic_title: str,
             "scores": scores,
             "prior_work": prior_work,
             "idea_dir": str(idea_dir),
-            "max_similarity": similarity_info.get("max_similarity", 0.0),
+            "max_overlap": pairwise_info.get("max_overlap", "none"),
         })
 
     # 排序并分配 rank
@@ -407,7 +488,7 @@ def score_all_ideas(topic_dir: str, client, model: str, topic_title: str,
         _write_review_md(
             item["idea_dir"], item["title"], item["scores"],
             item["prior_work"], rank, len(scored),
-            max_similarity=item.get("max_similarity", 0.0),
+            pairwise_info=pairwise_info,
         )
 
         # 更新 registry 中的 idea

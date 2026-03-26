@@ -40,7 +40,7 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研分析专家。你的任务是分析
 
 ## 分析维度
 
-1. **定量分析**: {metric_names} 与 baseline 对比
+1. **定量分析**: 与 baseline 对比
 2. **课题相关分析**: 课题特定指标的改善程度
 3. **可视化分析**: 解读实验可视化结果（用 VLM 工具）
 4. **消融实验**: 各组件的贡献度
@@ -111,7 +111,6 @@ class AnalysisAgent(BaseAgent):
         topic_title = extract_topic_title(topic_dir)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
             topic_title=topic_title,
-            metric_names="",
         )
 
         super().__init__(
@@ -130,7 +129,7 @@ class AnalysisAgent(BaseAgent):
         self.register_tool("analyze_image", analyze_image, AnalyzeImageParams)
         self.register_tool("analyze_plots_dir", analyze_plots_dir, AnalyzePlotsParams)
 
-    def build_prompt(self, *, topic_title: str, metric_names: str = "",
+    def build_prompt(self, *, topic_title: str,
                      files_content: list, results_info: str = "",
                      step_id: str = None, version: int = None,
                      idea_dir: str) -> str:
@@ -138,9 +137,6 @@ class AnalysisAgent(BaseAgent):
 
 ## 研究课题
 {topic_title}
-
-## 评估指标
-{metric_names}
 
 {chr(10).join(files_content)}
 

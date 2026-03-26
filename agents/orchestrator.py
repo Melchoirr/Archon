@@ -807,8 +807,6 @@ class ResearchOrchestrator:
 
         prompt = agent.build_prompt(
             topic_title=self.topic_title,
-            dataset_names="",
-            metric_names="",
             topic_dir=self.topic_dir,
             idea_dir=idea_dir,
             proposal=proposal,
@@ -1038,7 +1036,6 @@ class ResearchOrchestrator:
 
         prompt = agent.build_prompt(
             topic_title=self.topic_title,
-            metric_names="",
             files_content=files_content,
             results_info=results_info,
             step_id=step_id,
