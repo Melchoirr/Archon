@@ -77,6 +77,11 @@ python run_research.py survey --topic T001 --step 4
 （暂无）
 
 ## 变化
+### [修改] 2026-03-26 10:18 — MinerU fallback 切换到 pipeline 轻量模式 (`pending`)
+- **目的**：MinerU 默认 hybrid-auto-engine 后端解析 23 页 PDF 需 26 分钟，不可用。切换到 pipeline 模式 + 关闭公式/表格解析，耗时降至 ~1 分钟
+- **改动**：`tools/paper_manager.py` `_parse_pdf_mineru()` 命令行增加 `-f false -t false` 关闭公式/表格解析；超时从 600s 缩短到 180s
+- **验证**：`mineru -b pipeline -m txt -d mps -f false -t false` 实测 8.4M/23 页 PDF 耗时 63 秒，输出 markdown 质量良好
+
 ### [实现] 2026-03-25 19:42 — 新增 check_local_knowledge 预检工具 (`eeb0585`)
 - **目的**：让 Agent 在决策阶段就能查询本地是否已有论文/总结/代码库，避免重复下载
 - **改动**：`tools/paper_manager.py` 新增 `check_local_knowledge()` 函数，检查 index.yaml + summaries + repos；`agents/survey_helpers.py` 在 3 处 Agent 工厂注册该工具

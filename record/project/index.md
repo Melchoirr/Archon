@@ -25,7 +25,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F01 — CLI 入口与项目初始化 · ✅已完成 · 🟢在用
 - **核心文件**：`run_research.py`
 - **上游**：无 / **下游**：F02
-- **最后变更**：2026-03-24 10:57
+- **最后变更**：2026-03-26 10:18
 
 <details><summary>功能概要</summary>
 
@@ -41,7 +41,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F02 — 编排引擎与 FSM 状态机 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/orchestrator.py`, `agents/fsm_engine.py`
 - **上游**：F01 / **下游**：F03-F12
-- **最后变更**：2026-03-24 10:57
+- **最后变更**：2026-03-26 10:18
 
 <details><summary>功能概要</summary>
 
@@ -89,7 +89,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F05 — 文献调研管道 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/survey_helpers.py`, `tools/openalex.py`, `tools/paper_manager.py`, `agents/data_agent.py`
 - **上游**：F01, F02, F07 / **下游**：F06, F07
-- **最后变更**：2026-03-25 19:42
+- **最后变更**：2026-03-26 10:18
 
 <details><summary>功能概要</summary>
 

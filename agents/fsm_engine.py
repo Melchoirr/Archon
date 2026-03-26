@@ -859,7 +859,8 @@ class ResearchFSM:
     def _persist_snapshot(self):
         """保存 FSM 状态到 {topic_dir}/fsm_state.yaml"""
         snapshot_path = self.paths.topic_dir / "fsm_state.yaml"
-        data = self.snapshot.model_dump()
+        # mode="json" 确保 StrEnum 等类型序列化为纯字符串，避免 Python 对象标签
+        data = self.snapshot.model_dump(mode="json")
         with open(snapshot_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
 
@@ -873,7 +874,11 @@ class ResearchFSM:
                 return FSMSnapshot(**data)
             except Exception as e:
                 logger.warning(f"FSM 快照加载失败: {e}，尝试从 research_tree 恢复")
-                return self._recover_from_tree()
+                snapshot = self._recover_from_tree()
+                # 用干净数据覆写损坏的文件
+                self.snapshot = snapshot
+                self._persist_snapshot()
+                return snapshot
         return FSMSnapshot()
 
     def _recover_from_tree(self) -> FSMSnapshot:

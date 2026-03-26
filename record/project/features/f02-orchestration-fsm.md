@@ -78,6 +78,11 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-26 10:18 — FSM 快照序列化修复 + 损坏快照自动恢复 (`pending`)
+- **目的**：修复 StrEnum 等类型写入 YAML 时带 Python 对象标签的问题；加载损坏快照恢复后自动覆写文件
+- **改动**：`agents/fsm_engine.py` `_persist_snapshot()` 改用 `model_dump(mode="json")` 确保纯字符串序列化；`_load_snapshot()` 从 research_tree 恢复后立即覆写 fsm_state.yaml
+- **验证**：未测试
+
 ### [重构] 2026-03-24 10:57 — FSM auto/interactive 模式 + 路由纯化 + 输入验证修复 (`f944c36`)
 - **目的**：分离质量评估与重试策略，修复 interactive 模式下 retry_counts 导致误 abandon、无效输入默认到推荐状态、Pydantic 序列化警告
 - **改动**：`fsm_engine.py` — `__init__` 增加 `auto` 参数；`_route_analysis/_route_theory_check/_route_debug` 剥离所有重试上限逻辑（纯返回评估结果）；`run_idea/step` 增加 auto 模式重试上限检查；`run_idea/run_topic` 用户确认加 `not self.auto` 守卫；`_prompt_user_idea` 无效输入 while 循环重新提示；`_mark_idea_abandoned` 改用 `IdeaStatus.failed` 枚举。`run_research.py` — fsm run 增加 `--auto` CLI 参数。`fsm_state.yaml` — I001 retry_counts 清零、状态重置

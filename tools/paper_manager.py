@@ -255,8 +255,9 @@ def _parse_pdf_mineru(pdf_path: str, output_dir: str) -> str | None:
     try:
         result = subprocess.run(
             ["mineru", "-p", pdf_path, "-o", output_dir,
-             "-b", "pipeline", "-m", "txt", "-d", "mps"],
-            capture_output=True, text=True, timeout=600,
+             "-b", "pipeline", "-m", "txt", "-d", "mps",
+             "-f", "false", "-t", "false"],
+            capture_output=True, text=True, timeout=180,
         )
         if result.returncode != 0:
             logger.warning(f"MinerU 解析失败: {result.stderr[:500]}")

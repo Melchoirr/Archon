@@ -209,7 +209,9 @@ def _get_fsm(topic_id: str = None, auto: bool = False):
 
     config_path = os.path.join(topic_dir, "config.yaml")
     if not os.path.exists(config_path):
-        config_path = "config.yaml"
+        print(f"ERROR: 找不到配置文件: {config_path}")
+        print(f"  请确认 topic 目录完整，或重新用 --topic xxx.md 初始化")
+        sys.exit(1)
 
     project_root = os.path.dirname(os.path.abspath(__file__))
     paths = PathManager(project_root, topic_dir)
