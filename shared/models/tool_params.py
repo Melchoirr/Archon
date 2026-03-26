@@ -202,9 +202,25 @@ class AddExperienceParams(ToolParamsBase):
 # ── paper_manager ─────────────────────────────────────────────
 
 class CheckLocalKnowledgeParams(ToolParamsBase):
-    """检查本地知识库中是否已存在匹配的资源（论文、代码库、总结）。在下载前调用，避免重复下载。支持 paper_id、标题关键词、repo 名称/URL 模糊匹配。"""
-    query: str = Field(description="搜索词（paper_id / arXiv ID / 标题关键词 / repo 名称或 URL）")
-    resource_type: str = Field(default="all", description="资源类型: paper/repo/summary/all（默认 all）")
+    """检查本地知识库中是否已存在匹配的资源（论文、代码库、数据集、总结）。在下载前调用，避免重复下载。支持 paper_id、标题关键词、repo 名称/URL、数据集名称模糊匹配。"""
+    query: str = Field(description="搜索词（paper_id / arXiv ID / 标题关键词 / repo 名称或 URL / 数据集名称）")
+    resource_type: str = Field(default="all", description="资源类型: paper/repo/summary/dataset/all（默认 all）")
+
+
+class RegisterDatasetParams(ToolParamsBase):
+    """将已下载的数据集注册到索引，记录名称、URL、本地路径等元数据"""
+    name: str = Field(description="数据集名称")
+    url: str = Field(default="", description="下载 URL")
+    local_path: str = Field(description="本地文件/目录路径")
+    format: str = Field(default="", description="文件格式（csv/parquet/zip/hdf5 等）")
+    description: str = Field(default="", description="简要描述")
+
+
+class RegisterRepoParams(ToolParamsBase):
+    """将已 clone 的仓库注册到索引，记录 URL、本地路径等元数据"""
+    repo_url: str = Field(description="GitHub 仓库 URL")
+    local_path: str = Field(description="本地仓库路径")
+    has_summary: bool = Field(default=False, description="是否已生成 SUMMARY.md")
 
 
 class DownloadPaperParams(ToolParamsBase):

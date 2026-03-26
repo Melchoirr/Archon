@@ -6,7 +6,8 @@ from tools.idea_registry import read_research_status
 from tools.memory import query_memory
 from tools.web_search import web_search
 from tools.openalex import search_papers
-from tools.paper_manager import read_paper_section, check_local_knowledge
+from tools.paper_manager import read_paper_section
+from tools.knowledge_index import check_local_knowledge
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams, ReadResearchStatusParams,
     QueryMemoryParams, WebSearchParams, SearchPapersParams,

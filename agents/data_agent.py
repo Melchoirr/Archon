@@ -7,11 +7,13 @@ from tools.bash_exec import run_command
 from tools.web_search import web_search
 from tools.vlm_analysis import analyze_image, analyze_plots_dir
 from tools.venv_manager import setup_idea_venv
+from tools.knowledge_index import check_local_knowledge, register_dataset
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams, ListDirectoryParams,
     RunCommandParams, WebSearchParams,
     AnalyzeImageParams, AnalyzePlotsParams,
     SetupVenvParams,
+    CheckLocalKnowledgeParams, RegisterDatasetParams,
 )
 
 _SYSTEM_PROMPT = """你是数据工程与 EDA 执行专家。严格按 {eda_guide_path} 中的规划执行。
@@ -26,6 +28,8 @@ _SYSTEM_PROMPT = """你是数据工程与 EDA 执行专家。严格按 {eda_guid
 | web_search(query) | 搜索网页 | JSON 数组 |
 | analyze_plots_dir(plots_dir, context) | VLM 分析目录下所有图片 | 每张图的文字分析 |
 | setup_venv(idea_src_dir) | 创建/更新 venv 并安装 requirements.txt | 成功/失败消息 |
+| check_local_knowledge(query, resource_type) | 检查本地是否已有资源 | 匹配结果描述 |
+| register_dataset(name, url, local_path, format) | 注册已下载数据集到索引 | 确认消息 |
 
 ## 关键命令格式
 - 下载: run_command(command='wget -q -O {data_dir}/文件名 "URL"')
@@ -40,13 +44,20 @@ _SYSTEM_PROMPT = """你是数据工程与 EDA 执行专家。严格按 {eda_guid
 
 ## 执行流程
 
+**Phase 0: 预检**
+0. 调用 read_file(path='{eda_guide_path}') 读取 EDA 指南
+1. 对每个待下载数据集:
+   a. check_local_knowledge(query=数据集名, resource_type="dataset") 检查是否已下载
+   b. 已存在且文件完好 → 跳过下载，直接进入 Phase 2
+   c. 部分存在 → 记录状态，尝试补全
+
 **Phase 1: 下载数据**
-1. 调用 read_file(path='{eda_guide_path}') 读取 EDA 指南
-2. 对每个数据集:
+2. 对每个需要下载的数据集:
    a. run_command 执行 wget 下载到 {data_dir}/
    b. run_command(command='ls -lh {data_dir}/文件名') 验证文件存在
    c. returncode≠0 → web_search(query="数据集名 download alternative") 找替代链接，重试一次
    d. zip/gz 文件 → run_command 解压
+   e. 下载成功后调用 register_dataset(name=数据集名, url=下载URL, local_path=本地路径, format=文件格式) 注册到索引
 3. 禁止 git clone
 
 **Phase 2: 编写并执行 EDA**
@@ -122,6 +133,8 @@ class DataAgent(BaseAgent):
         self.register_tool("analyze_image", analyze_image, AnalyzeImageParams)
         self.register_tool("analyze_plots_dir", analyze_plots_dir, AnalyzePlotsParams)
         self.register_tool("setup_venv", setup_idea_venv, SetupVenvParams)
+        self.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
+        self.register_tool("register_dataset", register_dataset, RegisterDatasetParams)
 
     def build_prompt(self) -> str:
         prompt = (
@@ -136,12 +149,13 @@ class DataAgent(BaseAgent):
             f"\n"
             f"## 执行步骤\n"
             f"1. 调用 read_file(path='{self.eda_guide_path}') 读取规划\n"
-            f"2. 按规划下载每个数据集到 {self.data_dir}/\n"
-            f"3. 为每个数据集编写 EDA 脚本到 {self.eda_scripts_dir}/\n"
-            f"4. 执行脚本，图表保存到 {self.eda_plots_dir}/\n"
-            f"5. 调用 analyze_plots_dir 分析图表\n"
-            f"6. 写入 EDA 报告到 {self.eda_report_path}\n"
-            f"7. 更新 {self.datasets_path}"
+            f"2. 对每个数据集调用 check_local_knowledge 预检\n"
+            f"3. 按规划下载未缓存的数据集到 {self.data_dir}/，下载后调 register_dataset 注册\n"
+            f"4. 为每个数据集编写 EDA 脚本到 {self.eda_scripts_dir}/\n"
+            f"5. 执行脚本，图表保存到 {self.eda_plots_dir}/\n"
+            f"6. 调用 analyze_plots_dir 分析图表\n"
+            f"7. 写入 EDA 报告到 {self.eda_report_path}\n"
+            f"8. 更新 {self.datasets_path}"
         )
         if self.venv_path:
             prompt += (

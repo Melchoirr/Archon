@@ -4,7 +4,8 @@ from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file
 from tools.web_search import web_search
 from tools.openalex import search_papers, search_topics
-from tools.paper_manager import read_paper_section, check_local_knowledge
+from tools.paper_manager import read_paper_section
+from tools.knowledge_index import check_local_knowledge
 from shared.models.tool_params import (
     ReadFileParams, WriteFileParams,
     WebSearchParams, SearchTopicsParams, SearchPapersParams, ReadPaperSectionParams,

@@ -12,9 +12,8 @@ from tools.web_search import web_search
 from tools.file_ops import (
     read_file, write_file, list_directory,
 )
-from tools.paper_manager import (
-    search_paper_index, check_local_knowledge,
-)
+from tools.paper_manager import search_paper_index
+from tools.knowledge_index import check_local_knowledge
 from tools.github_repo import (
     clone_repo, summarize_repo, list_repos,
 )

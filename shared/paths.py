@@ -44,8 +44,16 @@ class PathManager:
         return self.knowledge_dir / "repos"
 
     @property
+    def repo_index(self) -> Path:
+        return self.repos_dir / "index.yaml"
+
+    @property
     def dataset_cards_dir(self) -> Path:
         return self.knowledge_dir / "dataset_cards"
+
+    @property
+    def dataset_index(self) -> Path:
+        return self.dataset_cards_dir / "index.yaml"
 
     @property
     def memory_dir(self) -> Path:

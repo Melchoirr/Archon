@@ -12,10 +12,9 @@
 - `tools/openalex.py:261-345` — `search_papers()`，论文搜索（keyword/semantic/exact）
 - `tools/openalex.py:347-403` — `get_paper_references()` / `get_paper_citations()`，引用图遍历
 - `tools/paper_manager.py:172-273` — `_parse_pdf_zhipu()` / `_parse_pdf_mineru()`，PDF 双后端解析
-- `tools/paper_manager.py:305-357` — `check_local_knowledge()`，预检本地知识库（论文/总结/代码库）
-- `tools/paper_manager.py:360-413` — `download_paper()`，论文下载 + 解析
+- `tools/paper_manager.py:320-390` — `download_paper()`，论文下载 + 解析
 - `tools/paper_manager.py:360-465` — `read_paper_section()`，论文分段阅读（模糊匹配）
-- `agents/data_agent.py:88-161` — `DataAgent`，数据下载 + EDA（8 个工具，35 次迭代）
+- `agents/data_agent.py:84-154` — `DataAgent`，数据下载 + EDA（10 个工具含 check_local_knowledge/register_dataset，35 次迭代）
 
 ## 功能描述
 5 步文献调研流水线：
@@ -77,6 +76,11 @@ python run_research.py survey --topic T001 --step 4
 （暂无）
 
 ## 变化
+### [重构] 2026-03-26 17:14 — DataAgent 增加数据集预检/注册 + check_local_knowledge 迁移
+- **目的**：DataAgent 用 wget 直接下载无预检，数据集无索引无去重；check_local_knowledge 从 paper_manager 迁移到 knowledge_index
+- **改动**：`data_agent.py` 新增 check_local_knowledge/register_dataset 工具注册，system prompt 增加 Phase 0 预检步骤和 Phase 1 注册步骤；`survey_helpers.py` import 改为 `from tools.knowledge_index import check_local_knowledge`
+- **验证**：`python -c 'from agents.data_agent import DataAgent; from agents.survey_helpers import make_search_agent'` 通过
+
 ### [修改] 2026-03-26 10:18 — MinerU fallback 切换到 pipeline 轻量模式 (`d4e0e0a`)
 - **目的**：MinerU 默认 hybrid-auto-engine 后端解析 23 页 PDF 需 26 分钟，不可用。切换到 pipeline 模式 + 关闭公式/表格解析，耗时降至 ~1 分钟
 - **改动**：`tools/paper_manager.py` `_parse_pdf_mineru()` 命令行增加 `-f false -t false` 关闭公式/表格解析；超时从 600s 缩短到 180s

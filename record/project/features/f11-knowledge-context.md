@@ -4,6 +4,7 @@
 - **实现状态**：✅已完成
 
 ## 核心文件
+- `tools/knowledge_index.py` — 统一资源预检与索引（`check_local_knowledge()` 支持 paper/repo/dataset/summary、`register_dataset()`、`register_repo()`、`normalize_repo_url()`）
 - `tools/knowledge_base.py:16-186` — `KnowledgeBaseManager`，智谱知识库 API（创建/上传/检索/混合召回）
 - `tools/knowledge_base.py:188-223` — `search_knowledge_base()`，全局 KB 搜索（scope 过滤）
 - `tools/memory.py:8-16` — `_resolve_log_path()`，统一解析日志文件路径（log_path 优先，否则 memory_dir 拼接）
@@ -18,7 +19,14 @@
 - `tools/phase_logger.py:12-228` — 阶段日志（before/after 快照 + 产物上传 KB），统一使用 PathManager 路径
 
 ## 功能描述
-知识积累与上下文管理三大机制：
+知识积累与上下文管理四大机制：
+
+**统一资源预检**（knowledge_index）：
+- `check_local_knowledge(query, resource_type)` — 支持 paper/repo/dataset/summary/all 五种资源类型，下载前调用避免重复
+- `register_dataset(name, url, local_path, format)` — 数据集下载后注册到 `knowledge/dataset_cards/index.yaml`
+- `register_repo(repo_url, local_path)` — 仓库 clone 后注册到 `knowledge/repos/index.yaml`
+- `normalize_repo_url()` — GitHub URL 归一化（去 protocol/.git/大小写统一）
+- 从 `paper_manager.py` 迁移并扩展，原函数已删除
 
 **智谱知识库**（KnowledgeBaseManager）：
 - 创建/删除知识库，上传文档（txt/md/pdf/doc/xls/ppt）
@@ -89,6 +97,11 @@ from tools.knowledge_base import search_knowledge_base
 （暂无）
 
 ## 变化
+### [实现] 2026-03-26 17:14 — 新增统一资源预检模块 knowledge_index.py
+- **目的**：数据集和仓库缺乏与论文对齐的去重/预检机制，`check_local_knowledge` 不支持 dataset 类型
+- **改动**：新增 `tools/knowledge_index.py`（从 paper_manager 迁移 check_local_knowledge + 扩展 dataset/repo 分支 + URL 归一化 + register_dataset/register_repo）；`paper_manager.py` 删除旧 check_local_knowledge；6 个 agent 文件 import 路径改为 `tools.knowledge_index`
+- **验证**：`python -c 'import tools'` 通过；`grep` 确认无旧 import 残留；所有 agent import 通过
+
 ### [重构] 2026-03-26 16:49 — phase_logger.py 消除硬编码 os.path.join，统一使用 PathManager (`8ce2d81`)
 - **目的**：phase_logger 已接收 PathManager 但仍大量使用 os.path.join 手工拼接路径，双分支（paths/else）维护成本高
 - **改动**：新增 `_ensure_paths()` 统一保证 PathManager 实例；`log_phase_start`/`log_phase_end` 的 topic_dir 改为可选参数；`_collect_new_artifacts` 签名改为 `(phase, paths, idea_id)`，删除 else 分支；`_upload_artifacts` 移除未使用的 topic_dir/idea_id 参数；`os.makedirs` 替换为 `paths.ensure_dir()`；路径构造全部走 PathManager 属性

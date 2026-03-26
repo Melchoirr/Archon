@@ -6,7 +6,7 @@ from tools.idea_registry import add_idea, read_research_status
 from tools.memory import query_memory
 from tools.web_search import web_search
 from tools.openalex import search_papers
-from tools.paper_manager import check_local_knowledge
+from tools.knowledge_index import check_local_knowledge
 from functools import partial
 from tools.idea_graph import (
     add_idea_relationship, get_idea_graph,

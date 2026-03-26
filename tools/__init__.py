@@ -7,7 +7,8 @@ from .file_ops import read_file, write_file, append_file, edit_file, list_direct
 from .bash_exec import run_command
 from .idea_registry import IdeaRegistryService
 from .memory import query_memory, add_experience
-from .paper_manager import download_paper, read_paper_section, list_papers, check_local_knowledge
+from .paper_manager import download_paper, read_paper_section, list_papers
+from .knowledge_index import check_local_knowledge, register_dataset, register_repo
 from .claude_code import claude_write_module, claude_fix_error, claude_review
 from .knowledge_base import KnowledgeBaseManager, search_knowledge_base
 from .context_manager import ContextManager
@@ -33,8 +34,9 @@ from shared.models.tool_params import (
     ReadResearchStatusParams, AddIdeaParams,
     # memory
     QueryMemoryParams, AddExperienceParams,
-    # paper_manager
-    CheckLocalKnowledgeParams, DownloadPaperParams, ReadPaperSectionParams, ListPapersParams,
+    # paper_manager / knowledge_index
+    CheckLocalKnowledgeParams, RegisterDatasetParams, RegisterRepoParams,
+    DownloadPaperParams, ReadPaperSectionParams, ListPapersParams,
     # claude_code
     ClaudeWriteModuleParams, ClaudeFixErrorParams, ClaudeReviewParams,
     # knowledge_base

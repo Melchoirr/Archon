@@ -19,9 +19,9 @@
 **Web 搜索**（web_search）：DuckDuckGo 封装，返回 JSON 结果。用于 elaborate、ideation、theory_check 等阶段。
 
 **GitHub 仓库**（github_repo）：
-- `clone_repo()` 浅克隆（--depth 1）到 `knowledge/repos/`
-- `summarize_repo()` 调用 `claude -p` 生成 SUMMARY.md（缓存，不重复生成）
-- `list_repos()` 列出已克隆仓库及摘要状态
+- `clone_repo()` 浅克隆（--depth 1）到 `knowledge/repos/`，集成 repo 索引去重（归一化 URL 检查 + 自动注册）
+- `summarize_repo()` 调用 `claude -p` 生成 SUMMARY.md（缓存，生成后更新索引 has_summary）
+- `list_repos()` 索引优先 + 目录 fallback，标注未入索引仓库
 
 **Idea 注册表**（IdeaRegistryService，替代 ResearchTreeService）：
 - 线程安全（threading.Lock）CRUD
@@ -54,7 +54,7 @@
 ### 错误与边界情况
 - file_ops：FileNotFoundError 返回错误信息
 - web_search：DuckDuckGo 无结果返回空列表
-- clone_repo：已存在目录时跳过
+- clone_repo：归一化 URL 索引去重 + 目录存在检查（双重保护）；目录存在但未入索引时自动补注册
 - idea_registry：线程安全（Lock 保护），idea 不存在时返回 "not found" 消息
 
 ## 测试方法
@@ -70,6 +70,11 @@ print(web_search("time series forecasting", max_results=3))
 （暂无）
 
 ## 变化
+### [重构] 2026-03-26 17:14 — github_repo 集成 repo 索引去重
+- **目的**：clone_repo 仅做目录存在检查，同仓库换 target_dir 会重复 clone；无 URL 归一化
+- **改动**：`github_repo.py` 删除 `REPOS_DIR` 常量，import `knowledge_index` 的归一化/注册函数；`clone_repo` 先查索引再查目录，clone 成功自动注册；`summarize_repo` 生成后更新索引 has_summary；`list_repos` 索引优先 + 目录 fallback
+- **验证**：`python -c 'from tools.github_repo import clone_repo, list_repos'` 通过
+
 ### [重构] 2026-03-26 15:49 — research_tree → idea_registry 服务替换 (`7a63dca`)
 - **目的**：消除 research_tree 双轨制，IdeaRegistryService 替代 ResearchTreeService
 - **改动**：新增 `tools/idea_registry.py`（IdeaRegistryService + read_research_status + CRUD）；删除 `tools/research_tree.py`

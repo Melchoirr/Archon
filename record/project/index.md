@@ -88,8 +88,8 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 
 ### F05 — 文献调研管道 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/survey_helpers.py`, `tools/openalex.py`, `tools/paper_manager.py`, `agents/data_agent.py`
-- **上游**：F01, F02, F07 / **下游**：F06, F07
-- **最后变更**：2026-03-26 10:18
+- **上游**：F01, F02, F07, F11 / **下游**：F06, F07
+- **最后变更**：2026-03-26 17:14
 
 <details><summary>功能概要</summary>
 
@@ -169,7 +169,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F10 — 数据模型与路径管理 · ✅已完成 · 🟢在用
 - **核心文件**：`shared/paths.py`, `shared/path_guard.py`, `shared/models/`, `shared/templates/`
 - **上游**：无 / **下游**：F01-F12 全部
-- **最后变更**：2026-03-26 15:49
+- **最后变更**：2026-03-26 17:14
 
 <details><summary>功能概要</summary>
 
@@ -183,9 +183,9 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 → [完整详情](features/f10-data-models.md)
 
 ### F11 — 知识管理与上下文 · ✅已完成 · 🟢在用
-- **核心文件**：`tools/knowledge_base.py`, `tools/memory.py`, `tools/context_manager.py`, `tools/embedding.py`, `tools/phase_logger.py`
-- **上游**：F10 / **下游**：F03-F09
-- **最后变更**：2026-03-26 16:49
+- **核心文件**：`tools/knowledge_index.py`, `tools/knowledge_base.py`, `tools/memory.py`, `tools/context_manager.py`, `tools/embedding.py`, `tools/phase_logger.py`
+- **上游**：F10 / **下游**：F03-F09, F12
+- **最后变更**：2026-03-26 17:14
 
 <details><summary>功能概要</summary>
 
@@ -200,8 +200,8 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 
 ### F12 — 通用工具集 · ✅已完成 · 🟢在用
 - **核心文件**：`tools/file_ops.py`, `tools/web_search.py`, `tools/github_repo.py`, `tools/idea_registry.py`
-- **上游**：F03 / **下游**：F05-F09
-- **最后变更**：2026-03-26 15:49
+- **上游**：F03, F11 / **下游**：F05-F09
+- **最后变更**：2026-03-26 17:14
 
 <details><summary>功能概要</summary>
 
