@@ -97,7 +97,7 @@ from tools.knowledge_base import search_knowledge_base
 （暂无）
 
 ## 变化
-### [实现] 2026-03-26 23:21 — dataset card 生成 + context_manager 注入 + register_dataset 双模式
+### [实现] 2026-03-26 23:21 — dataset card 生成 + context_manager 注入 + register_dataset 双模式 (`38ea72f`)
 - **目的**：所有数据集都需要 dataset card 供下游 agent 参考；card_only 模式支持不下载的大型/受限数据集
 - **改动**：`knowledge_index.py` register_dataset 新增 access_mode/size_info/access_note 参数 + `_write_dataset_card()` 自动生成 md 文件到 dataset_cards_dir；`context_manager.py` 在 ideation/refine/code/experiment 阶段自动注入 dataset cards；`RegisterDatasetParams` 新增 access_mode/size_info/access_note 字段
 - **验证**：register_dataset downloaded/card_only 两种模式测试通过，card 文件正确生成

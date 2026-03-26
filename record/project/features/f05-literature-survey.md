@@ -76,7 +76,7 @@ python run_research.py survey --topic T001 --step 4
 （暂无）
 
 ## 变化
-### [实现] 2026-03-26 23:21 — DataAgent 支持 dataset card 生成 + 下载/仅记录双模式
+### [实现] 2026-03-26 23:21 — DataAgent 支持 dataset card 生成 + 下载/仅记录双模式 (`38ea72f`)
 - **目的**：所有数据集都需要 dataset card 供下游 agent 参考；大规模/需申请的数据集不应强制下载
 - **改动**：`data_agent.py` prompt 重写 Phase 0/1 加入策略判断（downloaded vs card_only）、所有数据集必须 register_dataset；新增 `dataset_cards_dir` 参数；`orchestrator.py` 传入 dataset_cards_dir 到 DataAgent + allowed_dirs
 - **验证**：register_dataset 两种模式测试通过，card 文件正确生成
