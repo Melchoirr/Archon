@@ -58,7 +58,7 @@ result = evaluator.evaluate({"analysis_md": "...", "metrics_json": "..."})
 （暂无）
 
 ## 变化
-### [修复] 2026-03-27 23:22 — 修复全部 Evaluator 的 Decision import 路径错误
+### [修复] 2026-03-27 23:22 — 修复全部 Evaluator 的 Decision import 路径错误 (`f0977fc`)
 - **目的**：三个 evaluator 都从 `shared.models.fsm` 导入 `*Decision`，但这些类实际定义在 `shared.models.decisions`
 - **改动**：`analysis_evaluator.py`、`theory_evaluator.py`、`survey_evaluator.py` — 将 `*Decision` 的 import 改为从 `shared.models.decisions` 导入，`*Verdict` 仍从 `shared.models.fsm` 导入
 - **验证**：`python -c 'from agents.evaluators import ...'` 通过
