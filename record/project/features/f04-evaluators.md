@@ -58,7 +58,7 @@ result = evaluator.evaluate({"analysis_md": "...", "metrics_json": "..."})
 （暂无）
 
 ## 变化
-### [修复] 2026-03-27 23:13 — 修复 AnalysisEvaluator import 路径错误
+### [修复] 2026-03-27 23:13 — 修复 AnalysisEvaluator import 路径错误 (`ae2f390`)
 - **目的**：修复 `AnalysisDecision` 从错误模块导入导致的 ImportError
 - **改动**：`agents/evaluators/analysis_evaluator.py` — 将 `from shared.models.fsm import AnalysisDecision` 改为 `from shared.models.decisions import AnalysisDecision`（`AnalysisDecision` 定义在 decisions.py 而非 fsm.py）
 - **验证**：未测试
