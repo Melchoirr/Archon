@@ -1,7 +1,8 @@
 """SurveyEvaluator — 文献调研后的覆盖度评估"""
 
 from .base_evaluator import BaseEvaluator
-from shared.models.fsm import SurveyDecision, SurveyVerdict
+from shared.models.decisions import SurveyDecision
+from shared.models.fsm import SurveyVerdict
 
 SYSTEM_PROMPT = """你是文献调研评估专家。根据综述文档、论文列表和课题背景，评估文献调研的覆盖度。
 

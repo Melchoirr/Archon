@@ -1,7 +1,8 @@
 """TheoryEvaluator — 理论检查后的结构化判定"""
 
 from .base_evaluator import BaseEvaluator
-from shared.models.fsm import TheoryDecision, TheoryVerdict
+from shared.models.decisions import TheoryDecision
+from shared.models.fsm import TheoryVerdict
 
 SYSTEM_PROMPT = """你是科研理论评估专家。根据理论审查报告、文献综述和原始 proposal，判断理论基础是否扎实，并评估创新性和因果机制。
 
