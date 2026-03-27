@@ -94,6 +94,13 @@ class ResearchOrchestrator:
         if self.topic_dir:
             log_phase_end(phase, self.topic_dir, idea_id, summary, self.kb_mgr, paths=self.paths)
 
+    @staticmethod
+    def _inject_guidance(prompt: str, user_guidance: str) -> str:
+        """将用户指导注入 prompt 尾部"""
+        if user_guidance:
+            prompt += f"\n\n## 用户指导（优先级最高，必须遵循）\n{user_guidance}\n"
+        return prompt
+
     # === 阶段方法 ===
 
     def phase_elaborate(self, ref_topics: list = None) -> str:
@@ -769,7 +776,7 @@ class ResearchOrchestrator:
         print(f"{'='*60}")
         return result
 
-    def phase_refine(self, idea_id: str, ref_ideas: list = None,
+    def phase_refine(self, idea_id: str, user_guidance: str = "", ref_ideas: list = None,
                      ref_topics: list = None) -> str:
         """Idea 细化：理论推导 + 模块化结构 + 实验计划"""
         self._log_phase_start("refine", idea_id)
@@ -816,6 +823,7 @@ class ResearchOrchestrator:
             theory_review_path=theory_review_path,
             analysis_path=analysis_path,
         )
+        prompt = self._inject_guidance(prompt, user_guidance)
 
         result = agent.run(prompt)
 
@@ -831,7 +839,7 @@ class ResearchOrchestrator:
         print(f"  - {idea_dir}/experiment_plan.md")
         return result
 
-    def phase_code_reference(self, idea_id: str) -> str:
+    def phase_code_reference(self, idea_id: str, user_guidance: str = "") -> str:
         """代码参考获取：clone 和摘要参考论文的代码"""
         self._log_phase_start("code_reference", idea_id)
 
@@ -851,6 +859,7 @@ class ResearchOrchestrator:
                 ref_content += f"\n## {fname}\n{read_file(fpath)[:20000]}\n"
 
         prompt = build_code_ref_prompt(ref_content=ref_content)
+        prompt = self._inject_guidance(prompt, user_guidance)
 
         result = agent.run(prompt)
 
@@ -859,7 +868,7 @@ class ResearchOrchestrator:
         print(f"\nCode Reference 完成!")
         return result
 
-    def phase_code(self, idea_id: str, ref_ideas: list = None) -> str:
+    def phase_code(self, idea_id: str, user_guidance: str = "", ref_ideas: list = None) -> str:
         """代码编写"""
         self._log_phase_start("code", idea_id)
 
@@ -902,6 +911,7 @@ class ResearchOrchestrator:
             idea_dir=idea_dir,
             debug_report_path=debug_report_path,
         )
+        prompt = self._inject_guidance(prompt, user_guidance)
 
         result = agent.run(prompt)
 
@@ -922,7 +932,7 @@ class ResearchOrchestrator:
         return result
 
     def phase_experiment(self, idea_id: str, step_id: str = None,
-                         version: int = None, max_iter: int = None) -> str:
+                         version: int = None, user_guidance: str = "") -> str:
         """运行单次实验（指定步骤和版本）"""
         idea_dir_path = self.paths.idea_dir(idea_id)
         if not idea_dir_path:
@@ -974,6 +984,7 @@ class ResearchOrchestrator:
             results_dir=results_dir,
             venv_path=venv_path,
         )
+        prompt = self._inject_guidance(prompt, user_guidance)
 
         result = agent.run(prompt)
 
@@ -981,7 +992,7 @@ class ResearchOrchestrator:
 
         return result
 
-    def phase_analyze(self, idea_id: str, step_id: str = None,
+    def phase_analyze(self, idea_id: str, step_id: str = None, user_guidance: str = "",
                       version: int = None) -> str:
         """分析实验结果"""
         self._log_phase_start("analyze", idea_id)
@@ -1041,6 +1052,7 @@ class ResearchOrchestrator:
             version=version,
             idea_dir=idea_dir,
         )
+        prompt = self._inject_guidance(prompt, user_guidance)
 
         result = agent.run(prompt)
 
@@ -1060,7 +1072,7 @@ class ResearchOrchestrator:
         print(f"\nAnalysis 完成! 请 review {idea_dir}/")
         return result
 
-    def phase_conclude(self, idea_id: str, ref_ideas: list = None) -> str:
+    def phase_conclude(self, idea_id: str, user_guidance: str = "", ref_ideas: list = None) -> str:
         """结论总结"""
         self._log_phase_start("conclude", idea_id)
 
@@ -1082,6 +1094,7 @@ class ResearchOrchestrator:
             idea_dir=idea_dir,
             context=context,
         )
+        prompt = self._inject_guidance(prompt, user_guidance)
 
         result = agent.run(prompt)
 
@@ -1095,7 +1108,7 @@ class ResearchOrchestrator:
         print(f"\nConclusion 完成! 请 review {idea_dir}/conclusion.md")
         return result
 
-    def phase_theory_check(self, idea_id: str, feedback: str = "") -> str:
+    def phase_theory_check(self, idea_id: str, user_guidance: str = "") -> str:
         """理论检查：对 refinement 产出进行交叉验证"""
         self._log_phase_start("theory_check", idea_id)
 
@@ -1120,8 +1133,8 @@ class ResearchOrchestrator:
             survey_path=survey_path,
             proposal_path=proposal_path,
             output_path=output_path,
-            feedback=feedback,
         )
+        prompt = self._inject_guidance(prompt, user_guidance)
 
         result = agent.run(prompt)
 
@@ -1131,7 +1144,7 @@ class ResearchOrchestrator:
         print(f"\nTheory Check 完成! 请 review: {output_path}")
         return result
 
-    def phase_debug(self, idea_id: str,
+    def phase_debug(self, idea_id: str, user_guidance: str = "",
                     analysis_path: str = "",
                     debug_report_path: str = "") -> str:
         """调试：运行测试、修复 bug"""
@@ -1170,6 +1183,7 @@ class ResearchOrchestrator:
             debug_report_path=debug_report_path,
             venv_path=venv_path,
         )
+        prompt = self._inject_guidance(prompt, user_guidance)
 
         result = agent.run(prompt)
 

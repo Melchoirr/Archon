@@ -174,7 +174,7 @@ class ResearchFSM:
                 return None
             return self._step_topic()
 
-    def force_transition(self, idea_id: str, target_state: str, feedback: str = ""):
+    def force_transition(self, idea_id: str, target_state: str):
         """用户强制跳转到指定状态"""
         idea_fsm = self._ensure_idea(idea_id)
         from_state = idea_fsm.current_state

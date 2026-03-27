@@ -82,9 +82,8 @@ class TheoryCheckAgent(BaseAgent):
         self.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
 
     def build_prompt(self, *, theory_path: str, survey_path: str,
-                     proposal_path: str, output_path: str,
-                     feedback: str = "") -> str:
-        prompt = f"""请对以下研究方案的理论基础进行交叉验证。
+                     proposal_path: str, output_path: str) -> str:
+        return f"""请对以下研究方案的理论基础进行交叉验证。
 
 ## 输入文件
 - 理论推导: {theory_path}
@@ -101,6 +100,3 @@ class TheoryCheckAgent(BaseAgent):
 4. 检查逻辑一致性
 5. 撰写审查报告
 """
-        if feedback:
-            prompt += f"\n## 上一轮反馈\n{feedback}\n\n请特别关注反馈中提到的问题。"
-        return prompt

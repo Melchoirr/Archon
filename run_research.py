@@ -397,7 +397,7 @@ def main():
     # ── 强制跳转 ──
     if args.force and idea_id:
         fsm = _get_fsm(topic_id, auto=args.auto)
-        fsm.force_transition(idea_id, args.force, feedback=args.feedback)
+        fsm.force_transition(idea_id, args.force)
         print(f"强制跳转到 {args.force}")
         return
 
