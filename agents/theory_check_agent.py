@@ -83,7 +83,9 @@ class TheoryCheckAgent(BaseAgent):
 
     def build_prompt(self, *, theory_path: str, survey_path: str,
                      proposal_path: str, output_path: str) -> str:
-        return f"""请对以下研究方案的理论基础进行交叉验证。
+        self._output_paths = [output_path]
+        existing = self._scan_existing_outputs()
+        return existing + f"""请对以下研究方案的理论基础进行交叉验证。
 
 ## 输入文件
 - 理论推导: {theory_path}

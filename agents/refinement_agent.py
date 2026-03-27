@@ -1,4 +1,5 @@
 """Idea 细化 Agent：理论推导 + 模块化结构设计 + 阶段性实验设计"""
+import os
 from .base_agent import BaseAgent
 from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file
@@ -124,7 +125,10 @@ class RefinementAgent(BaseAgent):
                      past_exp: str = "", refinement_dir: str,
                      theory_review_path: str = "",
                      analysis_path: str = "") -> str:
-        prompt = f"""请将以下 idea 展开为完整技术方案。
+        self._output_paths = [refinement_dir,
+                              os.path.join(idea_dir, "experiment_plan.md")]
+        existing = self._scan_existing_outputs()
+        prompt = existing + f"""请将以下 idea 展开为完整技术方案。
 
 ## 研究课题
 {topic_title}

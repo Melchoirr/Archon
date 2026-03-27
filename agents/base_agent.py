@@ -55,8 +55,77 @@ class BaseAgent:
         self._max_tokens = cfg.llm.max_tokens
         self.messages = []
 
+        # 子类可设置，build_prompt 时自动注入已有产出
+        self._output_paths: list[str] = []
+
         # 自动注册全局知识库搜索工具
         self.register_tool("search_knowledge_base", search_knowledge_base, SearchKBParams)
+
+    def _scan_existing_outputs(self) -> str:
+        """扫描 _output_paths 中已存在的文件/目录，返回完整内容注入段。
+
+        - 文件：读取全文（超过 MAX_INJECT_CHARS 截断）
+        - 目录：列出内容 + 读取每个文件
+        """
+        if not self._output_paths:
+            return ""
+
+        MAX_INJECT_CHARS = 80000  # 单个文件注入上限
+        sections = []
+
+        for p in self._output_paths:
+            if not os.path.exists(p):
+                continue
+
+            if os.path.isfile(p):
+                content = self._read_for_inject(p, MAX_INJECT_CHARS)
+                if content:
+                    sections.append(f"### {os.path.basename(p)}\n"
+                                    f"路径: `{p}`\n\n{content}")
+
+            elif os.path.isdir(p):
+                entries = sorted(e for e in os.listdir(p)
+                                 if not e.startswith("."))
+                if not entries:
+                    continue
+                dir_sections = []
+                for e in entries:
+                    ep = os.path.join(p, e)
+                    if os.path.isdir(ep):
+                        sub = sorted(x for x in os.listdir(ep)
+                                     if not x.startswith("."))
+                        dir_sections.append(f"📂 {e}/ ({len(sub)} 项)")
+                    elif os.path.isfile(ep):
+                        content = self._read_for_inject(ep, MAX_INJECT_CHARS)
+                        if content:
+                            dir_sections.append(
+                                f"### {e}\n路径: `{ep}`\n\n{content}")
+                        else:
+                            size = os.path.getsize(ep)
+                            dir_sections.append(f"📄 {e} ({size} bytes, 二进制)")
+                if dir_sections:
+                    sections.append(f"## 目录: {p}/\n\n" + "\n\n".join(dir_sections))
+
+        if not sections:
+            return ""
+
+        return ("# 已有产出（断点恢复参考）\n\n"
+                "以下是当前阶段已产生的文件内容。请仔细阅读，**跳过已完成的部分**，"
+                "只补充缺失或不完整的内容。\n\n"
+                + "\n\n---\n\n".join(sections)
+                + "\n\n---\n\n")
+
+    @staticmethod
+    def _read_for_inject(path: str, max_chars: int) -> str:
+        """读取文件内容用于注入，非文本文件返回空。"""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            if len(content) > max_chars:
+                content = content[:max_chars] + f"\n\n... [截断，共 {len(content)} 字符]"
+            return content
+        except (UnicodeDecodeError, IsADirectoryError):
+            return ""
 
     def register_tool(self, name: str, handler, schema):
         """注册一个工具。schema: Pydantic BaseModel 子类（推荐）或 dict（兼容）

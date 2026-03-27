@@ -51,3 +51,5 @@ def list_directory(path: str = ".") -> str:
     """列出目录内容"""
     entries = os.listdir(path)
     return "\n".join(sorted(entries))
+
+

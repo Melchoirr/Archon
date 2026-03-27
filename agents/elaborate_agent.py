@@ -79,7 +79,9 @@ class ElaborateAgent(BaseAgent):
 
     def build_prompt(self, *, topic_title: str, spec_content: str = "",
                      context: str = "", output_path: str) -> str:
-        prompt = f"开始展开调研背景。\n\n课题: {topic_title}\n\n"
+        self._output_paths = [output_path]
+        existing = self._scan_existing_outputs()
+        prompt = existing + f"开始展开调研背景。\n\n课题: {topic_title}\n\n"
         if spec_content:
             prompt += f"""以下是用户对课题的初步描述，仅作为线索参考，不要被其限制：
 

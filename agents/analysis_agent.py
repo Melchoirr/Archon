@@ -1,4 +1,5 @@
 """分析决策 Agent：逐步逐版本分析实验结果（增强版：预期对比、VLM、微调建议）"""
+import os
 from .base_agent import BaseAgent
 from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file, list_directory
@@ -133,7 +134,12 @@ class AnalysisAgent(BaseAgent):
                      files_content: list, results_info: str = "",
                      step_id: str = None, version: int = None,
                      idea_dir: str) -> str:
-        prompt = f"""分析以下实验结果，提供决策建议。
+        self._output_paths = [
+            os.path.join(idea_dir, "analysis.md"),
+            os.path.join(idea_dir, "results"),
+        ]
+        existing = self._scan_existing_outputs()
+        prompt = existing + f"""分析以下实验结果，提供决策建议。
 
 ## 研究课题
 {topic_title}

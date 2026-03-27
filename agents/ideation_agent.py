@@ -112,7 +112,9 @@ class IdeationAgent(BaseAgent):
                      baselines: str = "", datasets_md: str = "",
                      metrics_md: str = "", failed: str = "",
                      context: str = "", ideas_dir: str) -> str:
-        return f"""基于以下综述生成研究 idea:
+        self._output_paths = [ideas_dir]
+        existing = self._scan_existing_outputs()
+        return existing + f"""基于以下综述生成研究 idea:
 
 ## 研究课题
 {topic_title}

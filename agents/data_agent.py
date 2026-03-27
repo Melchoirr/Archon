@@ -156,8 +156,16 @@ class DataAgent(BaseAgent):
         self.register_tool("check_local_knowledge", check_local_knowledge, CheckLocalKnowledgeParams)
         self.register_tool("register_dataset", register_dataset, RegisterDatasetParams)
 
+        self._output_paths = [
+            eda_report_path, datasets_path, data_dir,
+            eda_scripts_dir, eda_plots_dir,
+        ]
+        if dataset_cards_dir:
+            self._output_paths.append(dataset_cards_dir)
+
     def build_prompt(self) -> str:
-        prompt = (
+        existing = self._scan_existing_outputs()
+        prompt = existing + (
             f"请执行 EDA 流水线。\n\n"
             f"## 关键路径\n"
             f"- EDA 指南: {self.eda_guide_path}\n"

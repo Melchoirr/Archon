@@ -79,7 +79,9 @@ class DebugAgent(BaseAgent):
                      analysis_path: str = "",
                      debug_report_path: str = "",
                      venv_path: str = "") -> str:
-        prompt = f"""请对以下项目代码进行测试和调试。
+        self._output_paths = [src_dir]
+        existing = self._scan_existing_outputs()
+        prompt = existing + f"""请对以下项目代码进行测试和调试。
 
 ## 路径
 - idea 目录: {idea_dir}

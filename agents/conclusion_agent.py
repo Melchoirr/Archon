@@ -1,4 +1,5 @@
 """结论总结 Agent：客观总结 idea 的全链路结果"""
+import os
 from .base_agent import BaseAgent
 from shared.utils.config_helpers import extract_topic_title
 from tools.file_ops import read_file, write_file, list_directory
@@ -113,7 +114,9 @@ class ConclusionAgent(BaseAgent):
 
     def build_prompt(self, *, idea_id: str, idea_dir: str,
                      context: str = "") -> str:
-        return f"""请对 idea {idea_id} 进行客观总结。
+        self._output_paths = [os.path.join(idea_dir, "conclusion.md")]
+        existing = self._scan_existing_outputs()
+        return existing + f"""请对 idea {idea_id} 进行客观总结。
 
 Idea 目录: {idea_dir}
 
