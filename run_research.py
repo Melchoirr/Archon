@@ -340,9 +340,6 @@ def main():
                         help="从指定状态开始")
     parser.add_argument("--force", type=str, default=None,
                         help="强制跳转到指定状态")
-    parser.add_argument("--feedback", type=str, default="",
-                        help="强制跳转时的 feedback")
-
     # 辅助查询
     parser.add_argument("--status", action="store_true", help="查看 FSM 状态")
     parser.add_argument("--history", action="store_true", help="查看状态转换历史")

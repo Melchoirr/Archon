@@ -87,6 +87,11 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-28 00:57 — Orchestrator 新增 idea 兜底注册逻辑
+- **目的**：配合 F06 修复，在评分前自动补注册未被 IdeationAgent 注册的 idea
+- **改动**：`agents/orchestrator.py` — 新增 `_backfill_unregistered_ideas(ideas_dir)` 方法，扫描 ideas 目录匹配 `I\d+_*` 模式，对比 registry 已注册 ID，从 proposal.md 提取标题后调用 `registry.add_idea()` 补注册；在 `phase_ideation()` 评分前调用
+- **验证**：import 通过
+
 ### [重构] 2026-03-26 19:09 — 移除 deep_survey 状态，need_literature 改路由到 refine (`3bed669`)
 - **目的**：deep_survey 实质是完整 survey 重跑，与 refine 的补充文献搜索重叠且不传递 analyze 反馈，删除该状态简化 FSM
 - **改动**：

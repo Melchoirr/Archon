@@ -48,6 +48,16 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 科研创意专家。你的任务是基于
 - 如果一个方向有多个可能的改进，拆分为独立的 idea
 - idea 之间可以有关系（互补、组合、替代），用 add_idea_relationship 记录
 
+## 数量要求
+
+**至少生成 3 个 idea**，从不同研究角度出发。每完成一个 idea（write_file + add_idea 注册）后，
+立即开始下一个 idea 的 ReAct 循环，直到达到最低数量要求。
+
+## 注册要求（极其重要）
+
+每个 idea 写完 proposal.md 后，**必须立即调用 add_idea** 注册到 idea 注册表。
+未注册的 idea 将无法被评分。请确保 write_file 和 add_idea 成对出现。
+
 ## 生成角度
 
 根据 survey 和 context.md 的内容，从多个研究角度生成 idea:
@@ -88,7 +98,7 @@ class IdeationAgent(BaseAgent):
             name="Idea生成Agent",
             system_prompt=system_prompt,
             tools=[],
-            max_iterations=20,
+            max_iterations=40,
             allowed_dirs=allowed_dirs,
         )
         self.register_tool("read_file", read_file, ReadFileParams)
@@ -136,12 +146,12 @@ class IdeationAgent(BaseAgent):
 
 {context}
 
-根据 survey 和 context.md 的内容，从多个研究角度生成 idea:
+**你必须至少生成 3 个不同角度的 idea。** 从以下角度分别思考:
 - 分析 survey 中各方法的不足，针对性提出改进
 - 从理论/方法/实验/应用等不同层面思考
 - 每个 idea 只包含一个核心创新点
 
-每个 idea 创建对应的 {ideas_dir}/{{idea_id}}_{{shortname}}/proposal.md，
-并用 add_idea 注册到 idea 注册表。
-生成完毕后用 add_idea_relationship 记录 idea 间的关系，
+每个 idea 的完整流程: write_file 写 proposal.md → **立即 add_idea 注册**（缺一不可）。
+创建对应的 {ideas_dir}/{{idea_id}}_{{shortname}}/proposal.md。
+全部 idea 生成完毕后用 add_idea_relationship 记录 idea 间的关系，
 最后用 get_idea_graph 生成关系图。"""

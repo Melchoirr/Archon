@@ -101,6 +101,47 @@ class ResearchOrchestrator:
             prompt += f"\n\n## 用户指导（优先级最高，必须遵循）\n{user_guidance}\n"
         return prompt
 
+    def _backfill_unregistered_ideas(self, ideas_dir: str):
+        """兜底：扫描 ideas 目录，将未注册的 idea 自动补注册到 registry"""
+        if not os.path.exists(ideas_dir):
+            return
+        try:
+            registry_data = self.registry.load()
+            registered_ids = {idea.id for idea in registry_data.ideas}
+        except Exception:
+            registered_ids = set()
+
+        import re
+        for d in sorted(os.listdir(ideas_dir)):
+            dir_path = os.path.join(ideas_dir, d)
+            if not os.path.isdir(dir_path):
+                continue
+            match = re.match(r"(I\d+)_(.+)", d)
+            if not match:
+                continue
+            idea_id = match.group(1)
+            if idea_id in registered_ids:
+                continue
+            # 从 proposal.md 提取标题
+            proposal_path = os.path.join(dir_path, "proposal.md")
+            if not os.path.exists(proposal_path):
+                continue
+            title = d.replace("_", " ")
+            try:
+                with open(proposal_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("# "):
+                            title = line[2:].strip()
+                            break
+            except Exception:
+                pass
+            try:
+                self.registry.add_idea(idea_id, title, "methodology", brief=match.group(2))
+                logger.info(f"兜底注册 idea: {idea_id} - {title}")
+            except Exception as e:
+                logger.warning(f"兜底注册 {idea_id} 失败: {e}")
+
     # === 阶段方法 ===
 
     def phase_elaborate(self, ref_topics: list = None) -> str:
@@ -138,6 +179,7 @@ class ResearchOrchestrator:
         print(f"\n{'='*60}")
         print(f"Elaborate 完成! 请 review: {output_path}")
         print(f"{'='*60}")
+        self._commit_research("elaborate")
         return result
 
     def phase_survey(self, round_num: int = 1, start_step: int = 1) -> str:
@@ -182,6 +224,7 @@ class ResearchOrchestrator:
             if papers:
                 progress["step1_search"] = "completed"
                 self._save_survey_progress(progress, progress_path)
+                self._commit_research("survey", detail="step1_search", version=round_num)
             else:
                 progress["step1_search"] = "failed"
                 self._save_survey_progress(progress, progress_path)
@@ -197,6 +240,7 @@ class ResearchOrchestrator:
             progress["step2_download"] = "completed"
             progress["step3_summarize"] = "completed"
             self._save_survey_progress(progress, progress_path)
+            self._commit_research("survey", detail="step2_download+summarize", version=round_num)
 
         # Step 4: 代码仓库调研
         if start_step <= 4 and not completed("step4_repos"):
@@ -206,6 +250,7 @@ class ResearchOrchestrator:
             self._upload_single_artifact(str(self.paths.repos_summary_md))
             progress["step4_repos"] = "completed"
             self._save_survey_progress(progress, progress_path)
+            self._commit_research("survey", detail="step4_repos", version=round_num)
 
         # Step 4a: EDA 规划（从论文提取分析方法）
         if start_step <= 5 and not completed("step4a_eda_guide"):
@@ -215,6 +260,7 @@ class ResearchOrchestrator:
                                            datasets_path, metrics_path)
             progress["step4a_eda_guide"] = "completed"
             self._save_survey_progress(progress, progress_path)
+            self._commit_research("survey", detail="step4a_eda_guide", version=round_num)
 
         # Step 4b: 数据下载 + EDA
         if start_step <= 5 and not completed("step4b_data_eda"):
@@ -224,6 +270,7 @@ class ResearchOrchestrator:
             self._upload_single_artifact(str(self.paths.eda_report_md))
             progress["step4b_data_eda"] = "completed"
             self._save_survey_progress(progress, progress_path)
+            self._commit_research("survey", detail="step4b_data_eda", version=round_num)
 
         # Step 5: 综合整理
         if start_step <= 5 and not completed("step5_synthesize"):
@@ -236,6 +283,7 @@ class ResearchOrchestrator:
                 self._upload_single_artifact(p)
             progress["step5_synthesize"] = "completed"
             self._save_survey_progress(progress, progress_path)
+            self._commit_research("survey", detail="step5_synthesize", version=round_num)
 
         # 确定性后处理：更新全局索引
         try:
@@ -747,6 +795,9 @@ class ResearchOrchestrator:
                 proposal_path = str(self.paths.idea_proposal(d))
                 self._upload_single_artifact(proposal_path)
 
+        # 兜底：扫描 ideas 目录，自动补注册未注册的 idea
+        self._backfill_unregistered_ideas(ideas_dir)
+
         # 评分与排序
         from tools.idea_scorer import score_all_ideas
         print("\n  正在对 idea 进行评分...")
@@ -774,6 +825,7 @@ class ResearchOrchestrator:
         print(f"\n{'='*60}")
         print(f"Ideation 完成! 请 review {ideas_dir}/ 目录下的 proposal.md 和 review.md")
         print(f"{'='*60}")
+        self._commit_research("ideation")
         return result
 
     def phase_refine(self, idea_id: str, user_guidance: str = "", ref_ideas: list = None,
@@ -837,6 +889,7 @@ class ResearchOrchestrator:
         print(f"\nRefine 完成! 请 review:")
         print(f"  - {refinement_dir}/")
         print(f"  - {idea_dir}/experiment_plan.md")
+        self._commit_research("refine", idea_id=idea_id)
         return result
 
     def phase_code_reference(self, idea_id: str, user_guidance: str = "") -> str:
@@ -865,6 +918,7 @@ class ResearchOrchestrator:
 
         self._log_phase_end("code_reference", idea_id, result[:200])
 
+        self._commit_research("code_reference", idea_id=idea_id)
         print(f"\nCode Reference 完成!")
         return result
 
@@ -929,6 +983,7 @@ class ResearchOrchestrator:
         self._log_phase_end("code", idea_id, result[:200])
 
         print(f"\nCode 完成! 请 review {idea_dir}/src/")
+        self._commit_research("code", idea_id=idea_id)
         return result
 
     def phase_experiment(self, idea_id: str, step_id: str = None,
@@ -990,6 +1045,7 @@ class ResearchOrchestrator:
 
         self._log_phase_end("experiment", f"{idea_id}_{step_id}_V{version}", result[:200])
 
+        self._commit_research("experiment", idea_id=idea_id, detail=f"{step_id}_V{version}")
         return result
 
     def phase_analyze(self, idea_id: str, step_id: str = None, user_guidance: str = "",
@@ -1070,6 +1126,7 @@ class ResearchOrchestrator:
         self._log_phase_end("analyze", idea_id, result[:200])
 
         print(f"\nAnalysis 完成! 请 review {idea_dir}/")
+        self._commit_research("analyze", idea_id=idea_id)
         return result
 
     def phase_conclude(self, idea_id: str, user_guidance: str = "", ref_ideas: list = None) -> str:
@@ -1106,6 +1163,7 @@ class ResearchOrchestrator:
         self._log_phase_end("conclude", idea_id, result[:200])
 
         print(f"\nConclusion 完成! 请 review {idea_dir}/conclusion.md")
+        self._commit_research("conclude", idea_id=idea_id)
         return result
 
     def phase_theory_check(self, idea_id: str, user_guidance: str = "") -> str:
@@ -1142,6 +1200,7 @@ class ResearchOrchestrator:
         self._log_phase_end("theory_check", idea_id, result[:200])
 
         print(f"\nTheory Check 完成! 请 review: {output_path}")
+        self._commit_research("theory_check", idea_id=idea_id)
         return result
 
     def phase_debug(self, idea_id: str, user_guidance: str = "",
@@ -1190,6 +1249,7 @@ class ResearchOrchestrator:
         self._log_phase_end("debug", idea_id, result[:200])
 
         print(f"\nDebug 完成! 请 review: {src_dir}/debug_report.md")
+        self._commit_research("debug", idea_id=idea_id)
         return result
 
 
@@ -1238,6 +1298,16 @@ class ResearchOrchestrator:
             if match:
                 return match.group(1)
         return ""
+
+    def _commit_research(self, phase: str, idea_id: str = "",
+                         detail: str = "", version: int = 0):
+        """Auto-commit research repo after a phase/step completes."""
+        from shared.utils.research_git import commit_research
+        topic_id = self._get_topic_id()
+        prefix = f"[{topic_id}/{idea_id}]" if idea_id else f"[{topic_id}]"
+        ver = f" V{version}" if version else ""
+        suffix = f" — {detail}" if detail else ""
+        commit_research(self.paths.research, f"{prefix} {phase}{ver}{suffix}")
 
     def status(self, topic_id: str = None) -> str:
         """打印研究状态（从 idea_registry + fsm_state 读取）"""

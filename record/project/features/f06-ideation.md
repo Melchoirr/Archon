@@ -4,9 +4,9 @@
 - **实现状态**：✅已完成
 
 ## 核心文件
-- `agents/ideation_agent.py:79-110` — `IdeationAgent.__init__(topic_dir)`，11 个工具（含 check_local_knowledge），20 次迭代，`partial` 绑定 topic_dir 到 idea_graph 工具
-- `agents/ideation_agent.py:110-144` — `build_prompt()`，组装 ideation prompt
-- `agents/ideation_agent.py:19-75` — system prompt（3+ 搜索/idea、去重、原子性、≥800 字符）
+- `agents/ideation_agent.py:80-109` — `IdeationAgent.__init__(topic_dir)`，11 个工具（含 check_local_knowledge），40 次迭代，`partial` 绑定 topic_dir 到 idea_graph 工具
+- `agents/ideation_agent.py:111-155` — `build_prompt()`，组装 ideation prompt（含最低 3 个 idea 要求）
+- `agents/ideation_agent.py:21-77` — system prompt（3+ 搜索/idea、去重、原子性、≥800 字符、≥3 idea 数量要求、注册要求强调）
 - `tools/idea_scorer.py:62-88` — `extract_search_queries()`，LLM 提取搜索查询
 - `tools/idea_scorer.py:89-119` — `search_prior_work()`，去重论文搜索
 - `tools/idea_scorer.py:121-175` — `_compute_embedding_similarity()`，embedding 相似度检测
@@ -66,6 +66,13 @@ python run_research.py status --topic T001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-28 00:57 — IdeationAgent 迭代不足+idea 未注册导致评分跳过
+- **目的**：修复 ideation 阶段只生成 1 个 idea 且评分被跳过的问题：(1) max_iterations=20 太少，每个 idea 需 ~5 轮，只够 2-3 个；(2) system prompt 无最低数量要求；(3) LLM 写了 proposal.md 但没调 add_idea 注册，导致 registry 为空评分跳过
+- **改动**：
+  - `agents/ideation_agent.py` — max_iterations 20→40；system prompt 新增「数量要求」（≥3 个）和「注册要求」（write_file+add_idea 成对）；build_prompt 强化数量和注册指令
+  - `agents/orchestrator.py` — 新增 `_backfill_unregistered_ideas()` 兜底方法，评分前扫描 ideas 目录，自动补注册有 proposal.md 但未在 registry 中的 idea
+- **验证**：import 通过
+
 ### [修改] 2026-03-25 19:42 — IdeationAgent 注册 check_local_knowledge 工具 (`eeb0585`)
 - **目的**：Idea 生成时可预检本地知识库已有资源，避免搜索/引用重复内容
 - **改动**：`agents/ideation_agent.py` 新增 import 和 register_tool
