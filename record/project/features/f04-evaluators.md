@@ -58,6 +58,11 @@ result = evaluator.evaluate({"analysis_md": "...", "metrics_json": "..."})
 （暂无）
 
 ## 变化
+### [修复] 2026-03-27 23:13 — 修复 AnalysisEvaluator import 路径错误
+- **目的**：修复 `AnalysisDecision` 从错误模块导入导致的 ImportError
+- **改动**：`agents/evaluators/analysis_evaluator.py` — 将 `from shared.models.fsm import AnalysisDecision` 改为 `from shared.models.decisions import AnalysisDecision`（`AnalysisDecision` 定义在 decisions.py 而非 fsm.py）
+- **验证**：未测试
+
 ### [修改] 2026-03-26 19:09 — need_literature verdict 路由变更 (`3bed669`)
 - **目的**：deep_survey 被移除，need_literature 改路由到 refine
 - **改动**：`agents/evaluators/analysis_evaluator.py` — 更新 need_literature 描述，说明将回退到 refine 由 refine agent 搜索补充论文

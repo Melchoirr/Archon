@@ -1,7 +1,8 @@
 """AnalysisEvaluator — 实验分析后的结构化判定"""
 
 from .base_evaluator import BaseEvaluator
-from shared.models.fsm import AnalysisDecision, AnalysisVerdict
+from shared.models.decisions import AnalysisDecision
+from shared.models.fsm import AnalysisVerdict
 
 SYSTEM_PROMPT = """你是实验结果评估专家。根据分析报告、指标数据和迭代历史，做出结构化判定。
 
