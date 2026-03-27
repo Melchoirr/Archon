@@ -66,7 +66,7 @@ python run_research.py status --topic T001
 （暂无）
 
 ## 变化
-### [修复] 2026-03-28 00:57 — IdeationAgent 迭代不足+idea 未注册导致评分跳过
+### [修复] 2026-03-28 00:57 — IdeationAgent 迭代不足+idea 未注册导致评分跳过 (`b8e512e`)
 - **目的**：修复 ideation 阶段只生成 1 个 idea 且评分被跳过的问题：(1) max_iterations=20 太少，每个 idea 需 ~5 轮，只够 2-3 个；(2) system prompt 无最低数量要求；(3) LLM 写了 proposal.md 但没调 add_idea 注册，导致 registry 为空评分跳过
 - **改动**：
   - `agents/ideation_agent.py` — max_iterations 20→40；system prompt 新增「数量要求」（≥3 个）和「注册要求」（write_file+add_idea 成对）；build_prompt 强化数量和注册指令
