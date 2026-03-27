@@ -624,7 +624,6 @@ class ResearchOrchestrator:
             allowed_dirs=[eda_dir, str(self.paths.data_dir), str(self.paths.topic_dir), dataset_cards_dir],
         )
         agent.run(agent.build_prompt())
-        self._reload_config()
         print(f"  Step 4b 完成")
 
     def _survey_step5_synthesize(self, survey_dir: str, summaries_dir: str,
@@ -925,7 +924,6 @@ class ResearchOrchestrator:
     def phase_experiment(self, idea_id: str, step_id: str = None,
                          version: int = None, max_iter: int = None) -> str:
         """运行单次实验（指定步骤和版本）"""
-        self._reload_config()
         idea_dir_path = self.paths.idea_dir(idea_id)
         if not idea_dir_path:
             return f"未找到 idea 目录: {idea_id}"

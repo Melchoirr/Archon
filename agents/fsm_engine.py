@@ -140,16 +140,16 @@ class ResearchFSM:
             self._persist_snapshot()
 
         results = []
-        feedback = ""
+        guidance = ""
 
         while idea_fsm.current_state not in ("completed", "abandoned", "conclude"):
-            record, feedback = self._step_idea(idea_id, feedback)
+            record, guidance = self._step_idea(idea_id, guidance)
             if record is None:
                 return f"用户退出，{idea_id} 状态保留为 {idea_fsm.current_state}"
             results.append(f"{record.from_state}: done")
 
         if idea_fsm.current_state == "conclude":
-            self._execute_idea_state("conclude", idea_id, idea_fsm, feedback)
+            self._execute_idea_state("conclude", idea_id, idea_fsm, guidance)
             results.append("conclude: done")
             idea_fsm.current_state = "completed"
             self._persist_snapshot()
@@ -226,24 +226,28 @@ class ResearchFSM:
         # auto 重试上限
         next_state = self._apply_topic_retry_limit(state, next_state)
 
-        # 用户确认
+        # 用户确认（interactive 模式可附上指导）
+        user_guidance = ""
         if not self.auto:
-            next_state = self._prompt_user(
+            next_state, user_guidance = self._prompt_user(
                 state, next_state, decision, TOPIC_OPTIONS,
                 extra_info=self._topic_prompt_info())
         if next_state == "_quit":
             return None
 
-        # 记录 + 更新
+        # 记录（user_guidance 写入 audit）
+        summary = self._extract_summary(decision)
+        if user_guidance:
+            summary += f" | user: {user_guidance}"
         record = self._record_transition(
             state, next_state, self._build_trigger(decision),
-            verdict_summary=self._extract_summary(decision))
+            verdict_summary=summary)
         self.snapshot.topic_state = next_state
         self._persist_snapshot()
         return record
 
-    def _step_idea(self, idea_id: str, feedback: str) -> tuple[TransitionRecord | None, str]:
-        """Idea 级单步：递增 → 执行 → 评估 → 确认 → 记录 → 更新。返回 (record, next_feedback)"""
+    def _step_idea(self, idea_id: str, user_guidance: str) -> tuple[TransitionRecord | None, str]:
+        """Idea 级单步：递增 → 执行 → 评估 → 确认 → 记录 → 更新。返回 (record, next_guidance)"""
         idea_fsm = self.snapshot.idea_states[idea_id]
         state = idea_fsm.current_state
 
@@ -252,34 +256,32 @@ class ResearchFSM:
         ver = idea_fsm.pass_counts[state]
         print(f"\n[FSM] {idea_id} 状态: {state} V{ver}")
 
-        self._execute_idea_state(state, idea_id, idea_fsm, feedback)
+        self._execute_idea_state(state, idea_id, idea_fsm, user_guidance)
         next_state, decision = self._evaluate_idea_transition(state, idea_id, idea_fsm)
 
         # auto 重试上限
         next_state = self._apply_idea_retry_limit(state, next_state, idea_fsm, decision)
 
-        # 用户确认
+        # 用户确认（interactive 模式可附上指导）
+        next_guidance = ""
         if not self.auto and (state, next_state) in USER_CONFIRM_TRANSITIONS:
-            next_state = self._prompt_user(
+            next_state, next_guidance = self._prompt_user(
                 state, next_state, decision, IDEA_OPTIONS,
                 extra_info=f"{idea_id} {state} V{ver}")
         if next_state == "_quit":
             return None, ""
 
-        # 记录 + 更新
+        # 记录（user_guidance 写入 audit）
+        summary = self._extract_summary(decision)
+        if next_guidance:
+            summary += f" | user: {next_guidance}"
         record = self._record_transition(
             state, next_state, self._build_trigger(decision),
-            idea_id=idea_id, verdict_summary=self._extract_summary(decision))
-
-        # 提取 feedback
-        next_feedback = ""
-        if isinstance(decision, dict):
-            next_feedback = decision.get("next_action_detail", "") or \
-                            "; ".join(decision.get("revision_suggestions", []))
+            idea_id=idea_id, verdict_summary=summary)
 
         idea_fsm.current_state = next_state
         self._persist_snapshot()
-        return record, next_feedback
+        return record, next_guidance
 
     # ── 状态执行（纯委托）────────────────────────────────────
 
@@ -296,20 +298,19 @@ class ResearchFSM:
             return ""
 
     def _execute_idea_state(self, state: str, idea_id: str,
-                            idea_fsm: IdeaFSMState, feedback: str = "") -> str:
+                            idea_fsm: IdeaFSMState, user_guidance: str = "") -> str:
+        exp_ver = idea_fsm.pass_counts.get("experiment", 1)
         dispatch = {
-            "refine": lambda: self.orch.phase_refine(idea_id),
-            "theory_check": lambda: self.orch.phase_theory_check(idea_id, feedback=feedback),
-            "code_reference": lambda: self.orch.phase_code_reference(idea_id),
-            "code": lambda: self.orch.phase_code(idea_id),
-            "debug": lambda: self.orch.phase_debug(idea_id),
+            "refine": lambda: self.orch.phase_refine(idea_id, user_guidance=user_guidance),
+            "theory_check": lambda: self.orch.phase_theory_check(idea_id, user_guidance=user_guidance),
+            "code_reference": lambda: self.orch.phase_code_reference(idea_id, user_guidance=user_guidance),
+            "code": lambda: self.orch.phase_code(idea_id, user_guidance=user_guidance),
+            "debug": lambda: self.orch.phase_debug(idea_id, user_guidance=user_guidance),
             "experiment": lambda: self.orch.phase_experiment(
-                idea_id, step_id=idea_fsm.step_id,
-                version=idea_fsm.pass_counts.get("experiment", 1)),
+                idea_id, step_id=idea_fsm.step_id, version=exp_ver, user_guidance=user_guidance),
             "analyze": lambda: self.orch.phase_analyze(
-                idea_id, step_id=idea_fsm.step_id,
-                version=idea_fsm.pass_counts.get("experiment", 1)),
-            "conclude": lambda: self.orch.phase_conclude(idea_id),
+                idea_id, step_id=idea_fsm.step_id, version=exp_ver, user_guidance=user_guidance),
+            "conclude": lambda: self.orch.phase_conclude(idea_id, user_guidance=user_guidance),
         }
         handler = dispatch.get(state)
         if handler:
@@ -406,8 +407,8 @@ class ResearchFSM:
 
     def _prompt_user(self, from_state: str, to_state: str,
                      decision: dict, options: dict,
-                     extra_info: str = "") -> str:
-        """通用用户确认交互"""
+                     extra_info: str = "") -> tuple[str, str]:
+        """通用用户确认交互。返回 (next_state, user_guidance)"""
         header = f"\n[FSM] {from_state.upper()} 完成"
         if extra_info:
             header += f" — {extra_info}"
@@ -420,17 +421,27 @@ class ResearchFSM:
         labels = " | ".join(f"[{k}]{v[1:]}" for k, v in options.items())
         print(f"  可选: {labels}")
 
-        while True:
+        chosen = None
+        while chosen is None:
             try:
                 choice = input("\n  Enter 接受推荐，或输入选项: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 print("\n  [FSM] 中断，保留当前状态")
-                return "_quit"
+                return "_quit", ""
             if not choice:
-                return to_state
-            if choice in options:
-                return options[choice]
-            print(f"  无效输入 '{choice}'")
+                chosen = to_state
+            elif choice in options:
+                chosen = options[choice]
+            else:
+                print(f"  无效输入 '{choice}'")
+
+        # 可选：附上用户指导给下一个 Agent
+        try:
+            guidance = input("  附上指导（直接 Enter 跳过）: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            guidance = ""
+
+        return chosen, guidance
 
     def _print_decision_summary(self, decision: dict):
         """打印评估器决策摘要"""
