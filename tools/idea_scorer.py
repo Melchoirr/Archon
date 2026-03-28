@@ -8,6 +8,14 @@ from agents.base_agent import llm_call_with_retry
 from shared.models.idea_registry import Score
 from shared.models.enums import IdeaStatus
 
+
+def _extract_text(resp) -> str:
+    """从 LLM 响应中提取文本，跳过 ThinkingBlock。"""
+    for block in resp.content:
+        if hasattr(block, "text"):
+            return block.text.strip()
+    return ""
+
 logger = logging.getLogger(__name__)
 
 EXTRACT_QUERIES_PROMPT = """你是学术搜索专家。根据以下研究 idea proposal，提取 2-3 个最能验证其新颖性的英文搜索查询。
@@ -67,7 +75,7 @@ def extract_search_queries(client, model: str, proposal_text: str) -> list[str]:
         max_tokens=300,
         messages=[{"role": "user", "content": EXTRACT_QUERIES_PROMPT.format(proposal=proposal_text[:8000])}],
     )
-    text = resp.content[0].text.strip()
+    text = _extract_text(resp)
     try:
         queries = json.loads(text)
         if isinstance(queries, list):
@@ -192,7 +200,7 @@ def _pairwise_novelty_check(client, model: str, proposal_text: str,
                 client, model=model, max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
             )
-            text = resp.content[0].text.strip()
+            text = _extract_text(resp)
             try:
                 result = json.loads(text)
             except json.JSONDecodeError:
@@ -293,7 +301,7 @@ def score_idea(client, model: str, proposal_text: str,
         client, model=model, max_tokens=1024,
         messages=[{"role": "user", "content": prompt_content}],
     )
-    text = resp.content[0].text.strip()
+    text = _extract_text(resp)
 
     try:
         scores = json.loads(text)

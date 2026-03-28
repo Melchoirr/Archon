@@ -66,6 +66,11 @@ python run_research.py status --topic T001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-28 11:00 — idea_scorer 兼容 ThinkingBlock 响应
+- **目的**：LLM 响应含 ThinkingBlock 时 `resp.content[0].text` 报 AttributeError，导致评分整体失败
+- **改动**：`tools/idea_scorer.py` — 新增 `_extract_text(resp)` 辅助函数，遍历 `resp.content` 找第一个有 `.text` 属性的 block；替换全部 3 处 `resp.content[0].text` 调用
+- **验证**：import 通过
+
 ### [修复] 2026-03-28 00:57 — IdeationAgent 迭代不足+idea 未注册导致评分跳过 (`b8e512e`)
 - **目的**：修复 ideation 阶段只生成 1 个 idea 且评分被跳过的问题：(1) max_iterations=20 太少，每个 idea 需 ~5 轮，只够 2-3 个；(2) system prompt 无最低数量要求；(3) LLM 写了 proposal.md 但没调 add_idea 注册，导致 registry 为空评分跳过
 - **改动**：
