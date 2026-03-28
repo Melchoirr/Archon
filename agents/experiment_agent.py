@@ -149,8 +149,6 @@ class ExperimentAgent(BaseAgent):
                           context: str = "", past_exp: str = "",
                           idea_dir: str,
                           debug_report_path: str = "") -> str:
-        self._output_paths = [os.path.join(idea_dir, "src")]
-        existing = self._scan_existing_outputs()
         infra_template = self._load_infra_template()
         infra_section = ""
         if infra_template:
@@ -159,7 +157,7 @@ class ExperimentAgent(BaseAgent):
 ## 实验基础设施规范（MANDATORY — 必须严格遵循）
 {infra_template}
 """
-        prompt = existing + f"""根据设计方案和实验计划，实现代码。
+        prompt = f"""根据设计方案和实验计划，实现代码。
 
 ## 技术方案
 {design_content}

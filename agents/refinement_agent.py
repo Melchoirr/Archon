@@ -125,10 +125,7 @@ class RefinementAgent(BaseAgent):
                      past_exp: str = "", refinement_dir: str,
                      theory_review_path: str = "",
                      analysis_path: str = "") -> str:
-        self._output_paths = [refinement_dir,
-                              os.path.join(idea_dir, "experiment_plan.md")]
-        existing = self._scan_existing_outputs()
-        prompt = existing + f"""请将以下 idea 展开为完整技术方案。
+        prompt = f"""请将以下 idea 展开为完整技术方案。
 
 ## 研究课题
 {topic_title}
