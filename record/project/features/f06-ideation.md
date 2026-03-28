@@ -66,7 +66,7 @@ python run_research.py status --topic T001
 （暂无）
 
 ## 变化
-### [修复] 2026-03-28 11:00 — idea_scorer 兼容 ThinkingBlock 响应
+### [修复] 2026-03-28 11:00 — idea_scorer 兼容 ThinkingBlock 响应 (`2905565`)
 - **目的**：LLM 响应含 ThinkingBlock 时 `resp.content[0].text` 报 AttributeError，导致评分整体失败
 - **改动**：`tools/idea_scorer.py` — 新增 `_extract_text(resp)` 辅助函数，遍历 `resp.content` 找第一个有 `.text` 属性的 block；替换全部 3 处 `resp.content[0].text` 调用
 - **验证**：import 通过
