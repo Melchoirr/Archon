@@ -64,6 +64,11 @@ agent = BaseAgent("test", "You are a test agent.")
 （暂无）
 
 ## 变化
+### [修改] 2026-03-28 15:48 — 可迭代 agent 移除 _scan_existing_outputs (`bf9b4be`)
+- **目的**：`_scan_existing_outputs` 注入"跳过已完成"指令，FSM 反复进入 refine/debug/code 时 LLM 被误导直接返回
+- **改动**：RefinementAgent、DebugAgent、ExperimentAgent(build_code_prompt) 的 `build_prompt()` 中移除 `_output_paths` 和 `_scan_existing_outputs()` 调用。线性 phase（elaborate/ideation/analysis 等）保留 scan 用于断点恢复
+- **验证**：import 通过
+
 ### [实现] 2026-03-11 17:12 — 初始实现 (`969dd1c`)
 - **目的**：实现通用 ReAct 循环基座
 - **改动**：新增 base_agent.py（222 行）

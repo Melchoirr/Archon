@@ -70,6 +70,11 @@ python run_research.py experiment --idea T001-I001 --step S01
 （暂无）
 
 ## 变化
+### [修复] 2026-03-28 15:48 — DebugAgent/ExperimentAgent(code) 移除 _scan_existing_outputs (`bf9b4be`)
+- **目的**：debug 循环和 code 重写时，"跳过已完成"指令导致 agent 不做修改
+- **改动**：`agents/debug_agent.py` 和 `agents/experiment_agent.py`(`build_code_prompt`) — 删除 `_output_paths` 和 `_scan_existing_outputs()` 调用
+- **验证**：import 通过
+
 ### [修复] 2026-03-28 10:05 — DebugAgent prompt 强制输出结构化 verdict (`5b7d243`)
 - **目的**：DebugAgent 产出的 debug_report.md 缺少标准关键字，导致 FSM 默认判定 fixable → debug 无限循环
 - **改动**：`agents/debug_agent.py` SYSTEM_PROMPT — 新增「报告末尾必须包含 `## Verdict: <value>`」要求，列出 4 个可选值（All tests pass / Fixable / Needs rewrite / Design issue）；`agents/fsm_engine.py` `_parse_debug_report()` — 新增优先匹配 `## Verdict:` 行的逻辑，fallback 保留全文关键字匹配

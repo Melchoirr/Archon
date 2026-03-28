@@ -67,6 +67,11 @@ python run_research.py theory-check --idea T001-I001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-28 15:48 — RefinementAgent 移除 _scan_existing_outputs (`bf9b4be`)
+- **目的**：refine 被 theory_check/analyze 打回后重新进入时，"跳过已完成"指令导致 agent 瞬间返回不做修改
+- **改动**：`agents/refinement_agent.py` `build_prompt()` — 删除 `_output_paths` 和 `_scan_existing_outputs()` 调用，agent 通过 read_file 工具按需读取已有文件
+- **验证**：import 通过
+
 ### [修改] 2026-03-25 19:42 — 3 个 Agent 注册 check_local_knowledge 工具 (`eeb0585`)
 - **目的**：研究设计阶段可预检本地知识库已有资源
 - **改动**：`agents/design_agent.py`、`agents/refinement_agent.py`、`agents/theory_check_agent.py` 新增 import 和 register_tool

@@ -57,7 +57,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F03 — Agent 基座（ReAct 循环） · ✅已完成 · 🟢在用
 - **核心文件**：`agents/base_agent.py`
 - **上游**：F02 / **下游**：F05-F09 所有专用 Agent
-- **最后变更**：2026-03-11 17:12
+- **最后变更**：2026-03-28 15:48
 
 <details><summary>功能概要</summary>
 
@@ -121,7 +121,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F07 — 研究设计 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/elaborate_agent.py`, `agents/refinement_agent.py`, `agents/design_agent.py`, `agents/theory_check_agent.py`
 - **上游**：F01, F05, F06 / **下游**：F04, F08
-- **最后变更**：2026-03-25 19:42
+- **最后变更**：2026-03-28 15:48
 
 <details><summary>功能概要</summary>
 
@@ -137,7 +137,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F08 — 实验执行与调试 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/experiment_agent.py`, `agents/debug_agent.py`, `tools/claude_code.py`, `tools/venv_manager.py`
 - **上游**：F07, F02 / **下游**：F09, F04
-- **最后变更**：2026-03-28 10:05
+- **最后变更**：2026-03-28 15:48
 
 <details><summary>功能概要</summary>
 
