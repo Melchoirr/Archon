@@ -137,7 +137,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F08 — 实验执行与调试 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/experiment_agent.py`, `agents/debug_agent.py`, `tools/claude_code.py`, `tools/venv_manager.py`
 - **上游**：F07, F02 / **下游**：F09, F04
-- **最后变更**：2026-03-24 00:13
+- **最后变更**：2026-03-28 10:05
 
 <details><summary>功能概要</summary>
 

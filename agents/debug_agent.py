@@ -40,6 +40,16 @@ SYSTEM_PROMPT_TEMPLATE = """你是 AI 代码调试专家。你的任务是运行
 - 未解决的问题（如有）
 - 实现完整性检查结果
 
+**报告末尾必须包含 verdict 行**（FSM 依据此判定下一步）：
+```
+## Verdict: <verdict>
+```
+verdict 取值（只能选一个）：
+- `All tests pass` — 所有测试通过，可进入实验阶段
+- `Fixable` — 仍有可修复的 bug，需要继续调试
+- `Needs rewrite` — 代码质量太差，需要重写模块
+- `Design issue` — 问题出在设计层面（非实现 bug），需要回退到 refine
+
 ## 环境管理
 - 如果提供了 venv_path，使用 run_command 时设置 venv_path 参数
 - 如遇依赖缺失，可调用 setup_venv 工具重装依赖

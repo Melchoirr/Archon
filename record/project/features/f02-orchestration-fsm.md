@@ -87,6 +87,11 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [修复] 2026-03-28 10:05 — debug verdict 解析增强，优先匹配结构化行
+- **目的**：配合 F08 DebugAgent prompt 变更，让 FSM 能准确解析 `## Verdict:` 行
+- **改动**：`agents/fsm_engine.py` `_parse_debug_report()` — 新增 `re.search(r"##\s*verdict:\s*(.+)")` 优先匹配，支持 4 种 verdict；fallback 保留原有全文关键字匹配
+- **验证**：import 通过
+
 ### [实现] 2026-03-28 09:43 — research 子仓库自动 commit (`b8e512e`)
 - **目的**：research/ 有独立 git repo 但从未自动 commit，需在每个 agent/phase 完成后自动提交产出物
 - **改动**：`agents/orchestrator.py` — 新增 `_commit_research(phase, idea_id, detail, version)` 方法，委托 `shared/utils/research_git.py`；在 `phase_survey()` 6 个子步骤 + 其他 10 个 `phase_*()` 方法中各插入 1 次调用（共 16 处）

@@ -262,9 +262,10 @@ class ResearchFSM:
         # auto 重试上限
         next_state = self._apply_idea_retry_limit(state, next_state, idea_fsm, decision)
 
-        # 用户确认（interactive 模式可附上指导）
+        # 用户确认：评估器节点（有 decision）必须显示结果并确认
         next_guidance = ""
-        if not self.auto and (state, next_state) in USER_CONFIRM_TRANSITIONS:
+        has_evaluation = state in ("theory_check", "debug", "analyze") and decision
+        if not self.auto and has_evaluation:
             next_state, next_guidance = self._prompt_user(
                 state, next_state, decision, IDEA_OPTIONS,
                 extra_info=f"{idea_id} {state} V{ver}")
@@ -598,6 +599,21 @@ class ResearchFSM:
             return DebugDecision(verdict=DebugVerdict.fixable, details="debug_report.md 不存在")
         content = read_file(str(report_path))
         content_lower = content.lower()
+        # 优先匹配结构化 verdict 行: ## Verdict: <value>
+        import re
+        m = re.search(r"##\s*verdict:\s*(.+)", content_lower)
+        if m:
+            verdict_text = m.group(1).strip()
+            verdict_map = {
+                "all tests pass": DebugVerdict.tests_pass,
+                "fixable": DebugVerdict.fixable,
+                "needs rewrite": DebugVerdict.needs_rewrite,
+                "design issue": DebugVerdict.design_issue,
+            }
+            for key, verdict in verdict_map.items():
+                if key in verdict_text:
+                    return DebugDecision(verdict=verdict, details=content[:500])
+        # fallback: 全文关键字匹配
         for keyword, verdict in [
             ("all tests pass", DebugVerdict.tests_pass),
             ("所有测试通过", DebugVerdict.tests_pass),
