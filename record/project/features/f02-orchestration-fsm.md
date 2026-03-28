@@ -87,6 +87,11 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
+### [实现] 2026-03-28 09:43 — research 子仓库自动 commit (`b8e512e`)
+- **目的**：research/ 有独立 git repo 但从未自动 commit，需在每个 agent/phase 完成后自动提交产出物
+- **改动**：`agents/orchestrator.py` — 新增 `_commit_research(phase, idea_id, detail, version)` 方法，委托 `shared/utils/research_git.py`；在 `phase_survey()` 6 个子步骤 + 其他 10 个 `phase_*()` 方法中各插入 1 次调用（共 16 处）
+- **验证**：`commit_research()` 成功在 research repo 创建 commit，`git -C research log` 确认
+
 ### [修复] 2026-03-28 00:57 — Orchestrator 新增 idea 兜底注册逻辑 (`b8e512e`)
 - **目的**：配合 F06 修复，在评分前自动补注册未被 IdeationAgent 注册的 idea
 - **改动**：`agents/orchestrator.py` — 新增 `_backfill_unregistered_ideas(ideas_dir)` 方法，扫描 ideas 目录匹配 `I\d+_*` 模式，对比 registry 已注册 ID，从 proposal.md 提取标题后调用 `registry.add_idea()` 补注册；在 `phase_ideation()` 评分前调用

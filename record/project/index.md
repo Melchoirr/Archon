@@ -41,7 +41,7 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 ### F02 — 编排引擎与 FSM 状态机 · ✅已完成 · 🟢在用
 - **核心文件**：`agents/orchestrator.py`, `agents/fsm_engine.py`, `tools/idea_registry.py`, `shared/models/fsm.py`, `shared/models/decisions.py`, `shared/models/audit.py`, `shared/models/idea_registry.py`
 - **上游**：F01 / **下游**：F03-F12
-- **最后变更**：2026-03-28 00:57
+- **最后变更**：2026-03-28 09:43
 
 <details><summary>功能概要</summary>
 
@@ -167,9 +167,9 @@ shared/ (Pydantic 模型 + 路径管理 + 配置)
 → [完整详情](features/f09-analysis-conclusion.md)
 
 ### F10 — 数据模型与路径管理 · ✅已完成 · 🟢在用
-- **核心文件**：`shared/paths.py`, `shared/path_guard.py`, `shared/models/`, `shared/templates/`
+- **核心文件**：`shared/paths.py`, `shared/path_guard.py`, `shared/models/`, `shared/utils/`, `shared/templates/`
 - **上游**：无 / **下游**：F01-F12 全部
-- **最后变更**：2026-03-26 17:14
+- **最后变更**：2026-03-28 09:43
 
 <details><summary>功能概要</summary>
 

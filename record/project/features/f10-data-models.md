@@ -16,6 +16,7 @@
 - `shared/models/tool_params.py:12-426` — `ToolParamsBase` + 30+ 工具参数 Pydantic 模型（含丰富 docstring：使用场景/返回格式/示例），含 `CheckLocalKnowledgeParams`
 - `shared/models/enums.py` — 枚举定义（PhaseState, IdeaStatus, IdeaCategory, ExperienceType, RelationType）— PhaseName 已删除（与 FSMState 重复）
 - `shared/utils/config_helpers.py:8-24` — `load_topic_config()`
+- `shared/utils/research_git.py` — `commit_research(research_dir, message)`，research 子仓库自动 commit 工具函数
 - `shared/templates/experiment_infrastructure.md` — 实验代码基础设施规范
 
 ## 功能描述
@@ -78,6 +79,11 @@ print(pm.config_yaml)  # topics/T001_test/config.yaml
 （暂无）
 
 ## 变化
+### [实现] 2026-03-28 09:43 — 新增 research_git.py 自动 commit 工具 (`b8e512e`)
+- **目的**：为 research 子仓库提供自动 commit 能力，被 F02 Orchestrator 调用
+- **改动**：新增 `shared/utils/research_git.py` — `commit_research(research_dir, message)` 函数，`git add . → diff --cached → commit`，失败不抛异常仅 log warning
+- **验证**：`python -c 'from shared.utils.research_git import commit_research'` 通过；实际 commit 测试通过
+
 ### [实现] 2026-03-26 17:14 — PathManager 新增索引路径 + tool_params 新增注册模型 (`2db43ea`)
 - **目的**：为数据集/仓库索引提供路径支持和参数模型
 - **改动**：`shared/paths.py` 新增 `repo_index`（repos_dir/index.yaml）和 `dataset_index`（dataset_cards_dir/index.yaml）属性；`shared/models/tool_params.py` 更新 `CheckLocalKnowledgeParams` 支持 dataset 类型，新增 `RegisterDatasetParams`（name/url/local_path/format/description）和 `RegisterRepoParams`（repo_url/local_path/has_summary）
