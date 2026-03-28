@@ -87,7 +87,7 @@ python run_research.py elaborate --topic T001
 （暂无）
 
 ## 变化
-### [修复] 2026-03-28 10:05 — debug verdict 解析增强，优先匹配结构化行
+### [修复] 2026-03-28 10:05 — debug verdict 解析增强，优先匹配结构化行 (`5b7d243`)
 - **目的**：配合 F08 DebugAgent prompt 变更，让 FSM 能准确解析 `## Verdict:` 行
 - **改动**：`agents/fsm_engine.py` `_parse_debug_report()` — 新增 `re.search(r"##\s*verdict:\s*(.+)")` 优先匹配，支持 4 种 verdict；fallback 保留原有全文关键字匹配
 - **验证**：import 通过
