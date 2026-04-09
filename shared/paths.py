@@ -196,18 +196,19 @@ class PathManager:
         if not self.ideas_dir.exists():
             return None
         # idea_id 可能是 "T001-I001"（tree 格式）或 "I001"
-        # 目录名可能是 "T001_I001_xxx" 或 "I001_xxx"
-        normalized = idea_id.replace("-", "_")
+        # 目录名可能是 "T003-I001_xxx" 或 "T001_I001_xxx" 或 "I001_xxx"
+        # 统一用 _ 和 - 两种分隔符匹配
+        variants = {idea_id, idea_id.replace("-", "_"), idea_id.replace("_", "-")}
         for d in sorted(self.ideas_dir.iterdir()):
-            if d.is_dir() and (
-                d.name.startswith(idea_id)
-                or d.name.startswith(normalized)
-                or f"_{idea_id}_" in d.name
-                or f"_{normalized}_" in d.name
-                or d.name.endswith(f"_{idea_id}")
-                or d.name.endswith(f"_{normalized}")
-            ):
-                return d
+            if not d.is_dir():
+                continue
+            name = d.name
+            for v in variants:
+                if (name.startswith(v)
+                    or f"_{v}_" in name or f"-{v}_" in name
+                    or f"_{v}-" in name or f"-{v}-" in name
+                    or name.endswith(f"_{v}") or name.endswith(f"-{v}")):
+                    return d
         return None
 
     def idea_proposal(self, idea_id: str) -> Path | None:

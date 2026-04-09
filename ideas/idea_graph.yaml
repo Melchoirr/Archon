@@ -1,4 +1,10 @@
 relationships:
-- idea_a: I001
-  idea_b: I002
+- idea_a: T003-I001
+  idea_b: T003-I002
   type: complementary
+- idea_a: T003-I002
+  idea_b: T003-I003
+  type: complementary
+- idea_a: T003-I001
+  idea_b: T003-I003
+  type: alternative_to
